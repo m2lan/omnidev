@@ -1,0 +1,312 @@
+// API Client for OmniDev Platform
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+interface RequestOptions extends Omit<RequestInit, "body"> {
+  body?: unknown;
+}
+
+class ApiClient {
+  private baseUrl: string;
+  private accessToken: string | null = null;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+
+    // Load token from localStorage on client side
+    if (typeof window !== "undefined") {
+      this.accessToken = localStorage.getItem("access_token");
+    }
+  }
+
+  setAccessToken(token: string | null) {
+    this.accessToken = token;
+    if (typeof window !== "undefined") {
+      if (token) {
+        localStorage.setItem("access_token", token);
+      } else {
+        localStorage.removeItem("access_token");
+      }
+    }
+  }
+
+  getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
+  private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const { body, headers: customHeaders, ...rest } = options;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(customHeaders as Record<string, string>),
+    };
+
+    if (this.accessToken) {
+      headers["Authorization"] = `Bearer ${this.accessToken}`;
+    }
+
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      ...rest,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: { code: response.status, message: response.statusText },
+      }));
+      throw new ApiError(
+        error.error?.message || "Request failed",
+        error.error?.code || response.status,
+        error.error?.detail
+      );
+    }
+
+    return response.json();
+  }
+
+  // Auth
+  async register(data: RegisterInput) {
+    return this.post<ApiResponse<AuthResponse>>("/api/v1/auth/register", data);
+  }
+
+  async login(data: LoginInput) {
+    return this.post<ApiResponse<AuthResponse>>("/api/v1/auth/login", data);
+  }
+
+  async refreshToken(refreshToken: string) {
+    return this.post<ApiResponse<TokenResponse>>("/api/v1/auth/refresh", {
+      refresh_token: refreshToken,
+    });
+  }
+
+  // User
+  async getProfile() {
+    return this.get<ApiResponse<User>>("/api/v1/users/me");
+  }
+
+  async updateProfile(data: UpdateProfileInput) {
+    return this.patch<ApiResponse<User>>("/api/v1/users/me", data);
+  }
+
+  // Conversations
+  async listConversations(params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    if (params?.search) query.set("search", params.search);
+    return this.get<ApiResponse<Conversation[]>>(`/api/v1/conversations?${query}`);
+  }
+
+  async createConversation(data: CreateConversationInput) {
+    return this.post<ApiResponse<Conversation>>("/api/v1/conversations", data);
+  }
+
+  async getConversation(id: string) {
+    return this.get<ApiResponse<Conversation>>(`/api/v1/conversations/${id}`);
+  }
+
+  async deleteConversation(id: string) {
+    return this.delete<ApiResponse<void>>(`/api/v1/conversations/${id}`);
+  }
+
+  async listMessages(conversationId: string, params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    return this.get<ApiResponse<Message[]>>(
+      `/api/v1/conversations/${conversationId}/messages?${query}`
+    );
+  }
+
+  async sendMessage(conversationId: string, content: string, modelId?: string) {
+    return this.post<ApiResponse<{ user_message: Message; assistant_message: Message }>>(
+      `/api/v1/conversations/${conversationId}/messages`,
+      { content, model_id: modelId }
+    );
+  }
+
+  // Knowledge
+  async listKnowledgeBases(params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    return this.get<ApiResponse<KnowledgeBase[]>>(`/api/v1/knowledge?${query}`);
+  }
+
+  async createKnowledgeBase(data: CreateKBInput) {
+    return this.post<ApiResponse<KnowledgeBase>>("/api/v1/knowledge", data);
+  }
+
+  async searchKnowledgeBase(kbId: string, query: string, topK?: number) {
+    return this.post<ApiResponse<SearchResult[]>>(
+      `/api/v1/knowledge/${kbId}/search`,
+      { query, top_k: topK || 5 }
+    );
+  }
+
+  // Models
+  async listModels() {
+    return this.get<ApiResponse<Model[]>>("/api/v1/models");
+  }
+
+  // Helpers
+  private get<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: "GET" });
+  }
+
+  private post<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: "POST", body });
+  }
+
+  private patch<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: "PATCH", body });
+  }
+
+  private delete<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: "DELETE" });
+  }
+}
+
+export class ApiError extends Error {
+  code: number;
+  detail?: string;
+
+  constructor(message: string, code: number, detail?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.detail = detail;
+  }
+}
+
+// Types
+export interface ApiResponse<T> {
+  data: T;
+  meta?: {
+    total_count: number;
+    page: number;
+    page_size: number;
+    next_page_token?: string;
+  };
+}
+
+export interface AuthResponse {
+  user: User;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  nickname: string;
+  avatar_url?: string;
+  role: string;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  title?: string;
+  model_id?: string;
+  system_prompt?: string;
+  status: string;
+  pinned: boolean;
+  tags: string[];
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  model_id?: string;
+  token_input?: number;
+  token_output?: number;
+  latency_ms?: number;
+  created_at: string;
+}
+
+export interface Model {
+  id: string;
+  provider: string;
+  model_id: string;
+  display_name: string;
+  description?: string;
+  context_window: number;
+  supports_streaming: boolean;
+  supports_vision: boolean;
+  supports_tools: boolean;
+}
+
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  description?: string;
+  doc_count: number;
+  chunk_count: number;
+  total_tokens: number;
+  created_at: string;
+}
+
+export interface SearchResult {
+  chunk: {
+    id: string;
+    content: string;
+    metadata: Record<string, unknown>;
+  };
+  score: number;
+  source: string;
+}
+
+export interface ListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  nickname: string;
+}
+
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface UpdateProfileInput {
+  nickname?: string;
+  avatar_url?: string;
+  bio?: string;
+}
+
+export interface CreateConversationInput {
+  title?: string;
+  model_id?: string;
+  system_prompt?: string;
+  tags?: string[];
+}
+
+export interface CreateKBInput {
+  name: string;
+  description?: string;
+  chunk_size?: number;
+  chunk_overlap?: number;
+}
+
+export const api = new ApiClient(API_BASE);
