@@ -1,0 +1,115 @@
+# ==============================================================================
+# OmniDev AI Platform — Helm Chart Default Values
+# ==============================================================================
+
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+
+# --- API Gateway ---
+gateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: omnidev/gateway
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+  env:
+    APP_ENV: production
+    APP_PORT: "8080"
+    LOG_LEVEL: info
+
+# --- User Service ---
+user-service:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: omnidev/user-service
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# --- Chat Service ---
+chat-service:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: omnidev/chat-service
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8082
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilization: 60
+
+# --- PostgreSQL ---
+postgresql:
+  enabled: false  # Use managed database in production
+  host: ""
+  port: 5432
+  existingSecret: omnidev-db-credentials
+
+# --- Redis ---
+redis:
+  enabled: false  # Use managed cache in production
+  host: ""
+  port: 6379
+  existingSecret: omnidev-redis-credentials
+
+# --- Ingress ---
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  hosts:
+    - host: api.omnidev.dev
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: omnidev-tls
+      hosts:
+        - api.omnidev.dev
+
+# --- Monitoring ---
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s

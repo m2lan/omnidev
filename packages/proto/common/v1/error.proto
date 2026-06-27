@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/omnidev/proto/common/v1;commonv1";
+
+// Error represents an application error.
+message Error {
+  // HTTP status code.
+  int32 code = 1;
+
+  // Machine-readable error code.
+  string reason = 2;
+
+  // Human-readable error message.
+  string message = 3;
+
+  // Additional error details.
+  string detail = 4;
+
+  // Request ID for tracing.
+  string request_id = 5;
+
+  // Field-level validation errors.
+  repeated FieldError field_errors = 6;
+}
+
+// FieldError represents a validation error for a specific field.
+message FieldError {
+  // Field name.
+  string field = 1;
+
+  // Error message.
+  string message = 2;
+
+  // Rejected value.
+  string rejected_value = 3;
+}

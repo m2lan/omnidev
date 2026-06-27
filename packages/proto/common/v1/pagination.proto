@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/omnidev/proto/common/v1;commonv1";
+
+// PaginationRequest contains pagination parameters.
+message PaginationRequest {
+  // Maximum number of items to return. Default 20, max 100.
+  int32 page_size = 1;
+
+  // Token for the next page. Empty for the first page.
+  string page_token = 2;
+}
+
+// PaginationResponse contains pagination metadata.
+message PaginationResponse {
+  // Token for the next page. Empty if no more pages.
+  string next_page_token = 1;
+
+  // Total number of items.
+  int32 total_count = 2;
+}

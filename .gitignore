@@ -1,0 +1,62 @@
+# === Go ===
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work.sum
+
+# === Node ===
+node_modules/
+.next/
+.turbo/
+dist/
+*.tsbuildinfo
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Environment ===
+.env
+.env.local
+.env.*.local
+
+# === Build ===
+/bin/
+/tmp/
+/build/
+/out/
+
+# === Coverage ===
+coverage/
+*.coverprofile
+.coverage
+
+# === Logs ===
+*.log
+logs/
+
+# === Docker ===
+docker-compose.override.yml
+
+# === Terraform ===
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# === Secrets ===
+*.pem
+*.key
+*.crt
+secrets.yaml

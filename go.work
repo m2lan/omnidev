@@ -1,0 +1,22 @@
+go 1.22
+
+use (
+	./apps/gateway
+	./apps/services/user
+	./apps/services/chat
+	./apps/services/agent
+	./apps/services/rag
+	./apps/services/ide
+	./apps/services/workflow
+	./apps/services/mcp
+	./apps/services/deploy
+	./apps/services/billing
+	./apps/services/admin
+	./apps/services/notification
+	./apps/services/monitor
+	./apps/workers/doc-processor
+	./apps/workers/embedding-worker
+	./apps/workers/billing-worker
+	./apps/workers/notification-worker
+	./packages/go-common
+)

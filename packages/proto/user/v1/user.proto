@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "common/v1/pagination.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/omnidev/proto/user/v1;userv1";
+
+// User represents a user account.
+message User {
+  string id = 1;
+  string email = 2;
+  bool email_verified = 3;
+  string nickname = 4;
+  string avatar_url = 5;
+  string bio = 6;
+  string role = 7;
+  string status = 8;
+  google.protobuf.Timestamp last_login_at = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// UserService provides user management operations.
+service UserService {
+  // GetProfile returns the authenticated user's profile.
+  rpc GetProfile(GetProfileRequest) returns (User);
+
+  // UpdateProfile updates the authenticated user's profile.
+  rpc UpdateProfile(UpdateProfileRequest) returns (User);
+
+  // GetUser returns a user by ID.
+  rpc GetUser(GetUserRequest) returns (User);
+
+  // ListUsers returns a paginated list of users (admin only).
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // UpdateUserStatus updates a user's status (admin only).
+  rpc UpdateUserStatus(UpdateUserStatusRequest) returns (User);
+}
+
+message GetProfileRequest {}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message UpdateProfileRequest {
+  optional string nickname = 1;
+  optional string avatar_url = 2;
+  optional string bio = 3;
+}
+
+message ListUsersRequest {
+  common.v1.PaginationRequest pagination = 1;
+  string filter = 2;
+  string sort_by = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+message UpdateUserStatusRequest {
+  string user_id = 1;
+  string status = 2;
+}
+
+// AuthService provides authentication operations.
+service AuthService {
+  // Register creates a new user account.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Login authenticates a user and returns tokens.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // RefreshToken refreshes an access token.
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  // ValidateToken validates an access token.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // RevokeToken revokes a refresh token.
+  rpc RevokeToken(RevokeTokenRequest) returns (google.protobuf.Empty);
+
+  // CreateAPIKey creates a new API key.
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse);
+
+  // ListAPIKeys returns the user's API keys.
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse);
+
+  // RevokeAPIKey revokes an API key.
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (google.protobuf.Empty);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string nickname = 3;
+}
+
+message RegisterResponse {
+  User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ValidateTokenRequest {
+  string access_token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  string role = 4;
+}
+
+message RevokeTokenRequest {
+  string refresh_token = 1;
+}
+
+message APIKey {
+  string id = 1;
+  string name = 2;
+  string key_prefix = 3;
+  repeated string scopes = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  google.protobuf.Timestamp last_used_at = 6;
+  string status = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message CreateAPIKeyRequest {
+  string name = 1;
+  repeated string scopes = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CreateAPIKeyResponse {
+  APIKey api_key = 1;
+  string key = 2;  // Only returned on creation
+}
+
+message ListAPIKeysRequest {}
+
+message ListAPIKeysResponse {
+  repeated APIKey api_keys = 1;
+}
+
+message RevokeAPIKeyRequest {
+  string id = 1;
+}

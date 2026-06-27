@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+package chat.v1;
+
+import "common/v1/pagination.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/omnidev/proto/chat/v1;chatv1";
+
+// Model represents an AI model configuration.
+message Model {
+  string id = 1;
+  string provider = 2;
+  string model_id = 3;
+  string display_name = 4;
+  string description = 5;
+  int32 context_window = 6;
+  int32 max_output = 7;
+  bool supports_streaming = 8;
+  bool supports_vision = 9;
+  bool supports_tools = 10;
+  double input_price = 11;
+  double output_price = 12;
+  bool is_active = 13;
+}
+
+// Conversation represents a chat conversation.
+message Conversation {
+  string id = 1;
+  string user_id = 2;
+  string title = 3;
+  string model_id = 4;
+  string system_prompt = 5;
+  string status = 6;
+  bool pinned = 7;
+  repeated string tags = 8;
+  int32 message_count = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+// Message represents a chat message.
+message Message {
+  string id = 1;
+  string conversation_id = 2;
+  string role = 3;  // user, assistant, system, tool
+  string content = 4;
+  string model_id = 5;
+  int32 token_input = 6;
+  int32 token_output = 7;
+  int32 latency_ms = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// ChatChunk represents a streaming chat response chunk.
+message ChatChunk {
+  string id = 1;
+  string delta = 2;
+  string finish_reason = 3;
+  int32 token_input = 4;
+  int32 token_output = 5;
+  string model_id = 6;
+}
+
+// ChatService provides chat operations.
+service ChatService {
+  // ListConversations returns a paginated list of conversations.
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+
+  // CreateConversation creates a new conversation.
+  rpc CreateConversation(CreateConversationRequest) returns (Conversation);
+
+  // GetConversation returns a conversation by ID.
+  rpc GetConversation(GetConversationRequest) returns (Conversation);
+
+  // UpdateConversation updates a conversation.
+  rpc UpdateConversation(UpdateConversationRequest) returns (Conversation);
+
+  // DeleteConversation deletes a conversation.
+  rpc DeleteConversation(DeleteConversationRequest) returns (google.protobuf.Empty);
+
+  // ListMessages returns messages in a conversation.
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+
+  // SendMessage sends a message and returns the complete response.
+  rpc SendMessage(SendMessageRequest) returns (Message);
+
+  // StreamMessage sends a message and streams the response.
+  rpc StreamMessage(StreamMessageRequest) returns (stream ChatChunk);
+
+  // ListModels returns available AI models.
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+}
+
+message ListConversationsRequest {
+  common.v1.PaginationRequest pagination = 1;
+  string status = 2;
+  string model_id = 3;
+  string search = 4;
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+message CreateConversationRequest {
+  string title = 1;
+  string model_id = 2;
+  string system_prompt = 3;
+  repeated string tags = 4;
+}
+
+message GetConversationRequest {
+  string id = 1;
+}
+
+message UpdateConversationRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string model_id = 3;
+  optional string system_prompt = 4;
+  optional string status = 5;
+  optional bool pinned = 6;
+  repeated string tags = 7;
+}
+
+message DeleteConversationRequest {
+  string id = 1;
+}
+
+message ListMessagesRequest {
+  string conversation_id = 1;
+  common.v1.PaginationRequest pagination = 2;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  common.v1.PaginationResponse pagination = 2;
+}
+
+message SendMessageRequest {
+  string conversation_id = 1;
+  string content = 2;
+  string model_id = 3;
+  map<string, string> metadata = 4;
+}
+
+message StreamMessageRequest {
+  string conversation_id = 1;
+  string content = 2;
+  string model_id = 3;
+  map<string, string> metadata = 4;
+}
+
+message ListModelsRequest {}
+
+message ListModelsResponse {
+  repeated Model models = 1;
+}
