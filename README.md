@@ -15,7 +15,7 @@ All-in-One AI 开发平台，融合 IDE、Agent、RAG、Workflow、Deploy 等能
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/omnidev/omnidev.git
+git clone git@github.com:m2lan/omnidev.git
 cd omnidev
 ```
 
