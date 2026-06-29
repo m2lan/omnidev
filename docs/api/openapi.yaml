@@ -1,0 +1,828 @@
+openapi: 3.0.3
+info:
+  title: OmniDev AI Platform API
+  description: |
+    All-in-One AI Development Platform API.
+
+    ## Authentication
+    All endpoints require JWT Bearer token in the Authorization header.
+
+    ## Rate Limiting
+    - Default: 30 requests/second per IP
+    - Auth endpoints: 5 requests/minute per IP
+
+    ## Pagination
+    All list endpoints support `page` and `page_size` query parameters.
+    Responses include a `meta` object with `total_count`, `page`, `page_size`.
+  version: 0.1.0
+  contact:
+    name: OmniDev Team
+    email: support@omnidev.dev
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+  - url: https://api.omnidev.dev/api/v1
+    description: Production
+
+tags:
+  - name: Auth
+    description: Authentication and authorization
+  - name: Users
+    description: User profile management
+  - name: Conversations
+    description: AI chat conversations
+  - name: Prompts
+    description: Prompt template management
+  - name: Knowledge
+    description: RAG knowledge base management
+  - name: Agents
+    description: AI agent management
+  - name: Workflows
+    description: Workflow management
+  - name: MCP
+    description: MCP server and tool management
+  - name: Deployments
+    description: Application deployment
+  - name: Billing
+    description: Billing and usage
+
+paths:
+  # === Auth ===
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, nickname]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                nickname:
+                  type: string
+                  minLength: 2
+                  maxLength: 50
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          description: Email already registered
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+
+  # === Conversations ===
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List conversations
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Conversation list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Conversation"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+
+    post:
+      tags: [Conversations]
+      summary: Create a conversation
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                model_id:
+                  type: string
+                system_prompt:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: Conversation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}:
+    get:
+      tags: [Conversations]
+      summary: Get conversation by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Conversation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Conversations]
+      summary: Delete a conversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          description: Conversation deleted
+
+  /conversations/{id}/messages:
+    get:
+      tags: [Conversations]
+      summary: List messages in a conversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+
+    post:
+      tags: [Conversations]
+      summary: Send a message
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                model_id:
+                  type: string
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user_message:
+                        $ref: "#/components/schemas/Message"
+                      assistant_message:
+                        $ref: "#/components/schemas/Message"
+
+  # === Knowledge ===
+  /knowledge:
+    get:
+      tags: [Knowledge]
+      summary: List knowledge bases
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Knowledge base list
+
+    post:
+      tags: [Knowledge]
+      summary: Create a knowledge base
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                chunk_size:
+                  type: integer
+                  default: 512
+                chunk_overlap:
+                  type: integer
+                  default: 50
+      responses:
+        "201":
+          description: Knowledge base created
+
+  /knowledge/{id}/documents:
+    post:
+      tags: [Knowledge]
+      summary: Upload a document
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Document uploaded
+
+  /knowledge/{id}/search:
+    post:
+      tags: [Knowledge]
+      summary: Search knowledge base
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                top_k:
+                  type: integer
+                  default: 5
+      responses:
+        "200":
+          description: Search results
+
+  # === Agents ===
+  /agents:
+    get:
+      tags: [Agents]
+      summary: List agents
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Agent list
+
+    post:
+      tags: [Agents]
+      summary: Create an agent
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, system_prompt]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                system_prompt:
+                  type: string
+                tools:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      enabled:
+                        type: boolean
+      responses:
+        "201":
+          description: Agent created
+
+  /agents/{id}/run:
+    post:
+      tags: [Agents]
+      summary: Run an agent
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task]
+              properties:
+                task:
+                  type: string
+      responses:
+        "201":
+          description: Agent run started
+
+  # === Workflows ===
+  /workflows:
+    get:
+      tags: [Workflows]
+      summary: List workflows
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Workflow list
+
+    post:
+      tags: [Workflows]
+      summary: Create a workflow
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, definition]
+              properties:
+                name:
+                  type: string
+                definition:
+                  type: object
+                  properties:
+                    nodes:
+                      type: array
+                      items:
+                        type: object
+                    edges:
+                      type: array
+                      items:
+                        type: object
+      responses:
+        "201":
+          description: Workflow created
+
+  /workflows/{id}/run:
+    post:
+      tags: [Workflows]
+      summary: Run a workflow
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "201":
+          description: Workflow run started
+
+  # === MCP ===
+  /mcp/servers:
+    get:
+      tags: [MCP]
+      summary: List MCP servers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Server list
+
+    post:
+      tags: [MCP]
+      summary: Add MCP server
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, transport]
+              properties:
+                name:
+                  type: string
+                transport:
+                  type: string
+                  enum: [sse, stdio]
+                endpoint:
+                  type: string
+      responses:
+        "201":
+          description: Server added
+
+  /mcp/builtin:
+    get:
+      tags: [MCP]
+      summary: List built-in MCP servers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Built-in servers
+
+  # === Deployments ===
+  /deployments:
+    get:
+      tags: [Deployments]
+      summary: List deployments
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Deployment list
+
+    post:
+      tags: [Deployments]
+      summary: Create deployment
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, version, platform]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                version:
+                  type: string
+                platform:
+                  type: string
+                  enum: [docker, kubernetes]
+                config:
+                  type: object
+                  properties:
+                    port:
+                      type: integer
+                    replicas:
+                      type: integer
+                    env_vars:
+                      type: object
+      responses:
+        "201":
+          description: Deployment created
+
+  # === Billing ===
+  /billing/account:
+    get:
+      tags: [Billing]
+      summary: Get billing account
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Billing account
+
+  /billing/usage:
+    get:
+      tags: [Billing]
+      summary: Get usage summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: Usage summary
+
+  /billing/subscribe:
+    post:
+      tags: [Billing]
+      summary: Subscribe to a plan
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan, payment_method]
+              properties:
+                plan:
+                  type: string
+                  enum: [pro, team, enterprise]
+                payment_method:
+                  type: string
+                  enum: [stripe, wechat, alipay]
+      responses:
+        "200":
+          description: Subscribed
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            expires_at:
+              type: string
+              format: date-time
+
+    TokenResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            expires_at:
+              type: string
+              format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        nickname:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        model_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+        message_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+        content:
+          type: string
+        model_id:
+          type: string
+          nullable: true
+        token_input:
+          type: integer
+          nullable: true
+        token_output:
+          type: integer
+          nullable: true
+        latency_ms:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    PaginationMeta:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+        next_page_token:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                  message:
+                    type: string
+                  detail:
+                    type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: resource not found
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: unauthorized
