@@ -16,11 +16,13 @@ import (
 	"github.com/omnidev/go-common/auth"
 	"github.com/omnidev/go-common/cache"
 	"github.com/omnidev/go-common/config"
+	"github.com/omnidev/go-common/database"
 	"github.com/omnidev/go-common/logger"
 	"github.com/omnidev/go-common/middleware"
 	"github.com/omnidev/go-common/telemetry"
 
 	"github.com/omnidev/gateway/internal/handler"
+	"github.com/omnidev/gateway/internal/repository"
 	"github.com/omnidev/gateway/internal/router"
 )
 
@@ -68,9 +70,15 @@ func main() {
 		}()
 	}
 
-	// Initialize Redis (optional, graceful degradation)
-	var redisClient *cache.Redis
-	redisClient, err = cache.NewRedis(cfg.Redis)
+	// Initialize database
+	db, err := database.NewPostgres(cfg.Database)
+	if err != nil {
+		logger.Log.Fatal("Failed to connect to database", zap.Error(err))
+	}
+	defer db.Close()
+
+	// Initialize Redis
+	redisClient, err := cache.NewRedis(cfg.Redis)
 	if err != nil {
 		logger.Log.Warn("Failed to connect to Redis, rate limiting disabled", zap.Error(err))
 	}
@@ -83,8 +91,14 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 
+	// Initialize repositories
+	userRepository := repository.NewUserRepository(db.Pool)
+	oauthRepository := repository.NewOAuthRepository(db.Pool)
+	apiKeyRepository := repository.NewAPIKeyRepository(db.Pool)
+
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
+	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
@@ -106,7 +120,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

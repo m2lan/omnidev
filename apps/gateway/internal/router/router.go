@@ -15,6 +15,7 @@ func Setup(
 	r *gin.Engine,
 	jwtManager *auth.JWTManager,
 	healthHandler *handler.HealthHandler,
+	authHandler *handler.AuthHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -27,11 +28,11 @@ func Setup(
 		// Auth routes (no JWT required)
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/register", handler.NotImplemented("register"))
-			auth.POST("/login", handler.NotImplemented("login"))
-			auth.POST("/refresh", handler.NotImplemented("refresh token"))
-			auth.GET("/oauth/:provider", handler.NotImplemented("oauth redirect"))
-			auth.GET("/callback/:provider", handler.NotImplemented("oauth callback"))
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.RefreshToken)
+			auth.GET("/oauth/:provider", authHandler.OAuthRedirect)
+			auth.GET("/callback/:provider", authHandler.OAuthCallback)
 		}
 
 		// Protected routes (JWT required)
@@ -41,11 +42,11 @@ func Setup(
 			// User
 			users := protected.Group("/users")
 			{
-				users.GET("/me", handler.NotImplemented("get profile"))
-				users.PATCH("/me", handler.NotImplemented("update profile"))
-				users.GET("/me/api-keys", handler.NotImplemented("list api keys"))
-				users.POST("/me/api-keys", handler.NotImplemented("create api key"))
-				users.DELETE("/me/api-keys/:id", handler.NotImplemented("revoke api key"))
+				users.GET("/me", authHandler.GetProfile)
+				users.PATCH("/me", authHandler.UpdateProfile)
+				users.GET("/me/api-keys", authHandler.ListAPIKeys)
+				users.POST("/me/api-keys", authHandler.CreateAPIKey)
+				users.DELETE("/me/api-keys/:id", authHandler.RevokeAPIKey)
 			}
 
 			// Conversations
