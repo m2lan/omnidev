@@ -15,6 +15,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
 
   const isUser = message.role === "user";
+  const isStreaming = message.id === "streaming";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -97,23 +98,40 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               >
                 {message.content}
               </ReactMarkdown>
+              {isStreaming && (
+                <span className="inline-block w-2 h-4 bg-foreground animate-pulse ml-0.5" />
+              )}
             </div>
           )}
         </div>
 
         {/* Metadata */}
-        <div
-          className={cn(
-            "flex items-center gap-2 mt-1 text-xs text-muted-foreground",
-            isUser ? "justify-end" : ""
-          )}
-        >
-          {message.model_id && <span>{message.model_id}</span>}
-          {message.token_output && (
-            <span>{message.token_output} tokens</span>
-          )}
-          {message.latency_ms && <span>{message.latency_ms}ms</span>}
-        </div>
+        {!isUser && !isStreaming && (
+          <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+            {message.model_id && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                🤖 {message.model_id}
+              </span>
+            )}
+            {message.token_input !== undefined && message.token_input !== null && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                📥 {message.token_input} in
+              </span>
+            )}
+            {message.token_output !== undefined && message.token_output !== null && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                📤 {message.token_output} out
+              </span>
+            )}
+            {message.latency_ms !== undefined && message.latency_ms !== null && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
+                ⏱️ {message.latency_ms < 1000
+                  ? `${message.latency_ms}ms`
+                  : `${(message.latency_ms / 1000).toFixed(1)}s`}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

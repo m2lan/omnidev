@@ -7,13 +7,18 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   isSending: boolean;
+  streamingContent: string;
+  error: string | null;
+  selectedModel: string;
 
   // Actions
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<Conversation>;
   setActiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
-  sendMessage: (content: string, modelId?: string) => Promise<void>;
+  sendMessage: (content: string) => Promise<void>;
+  setSelectedModel: (model: string) => void;
+  clearError: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -22,54 +27,76 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   isSending: false,
+  streamingContent: "",
+  error: null,
+  selectedModel: "",
 
   fetchConversations: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
       const { data } = await api.listConversations({ page_size: 50 });
       set({ conversations: data || [], isLoading: false });
-    } catch {
-      set({ isLoading: false });
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Failed to load conversations",
+      });
     }
   },
 
   createConversation: async (title?: string) => {
-    const { data } = await api.createConversation({ title });
-    set((state) => ({
-      conversations: [data, ...state.conversations],
-      activeConversationId: data.id,
-      messages: [],
-    }));
-    return data;
+    set({ error: null });
+    try {
+      const { data } = await api.createConversation({
+        title,
+        model_id: get().selectedModel || undefined,
+      });
+      set((state) => ({
+        conversations: [data, ...state.conversations],
+        activeConversationId: data.id,
+        messages: [],
+      }));
+      return data;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : "Failed to create conversation" });
+      throw err;
+    }
   },
 
   setActiveConversation: async (id: string) => {
-    set({ activeConversationId: id, messages: [], isLoading: true });
+    set({ activeConversationId: id, messages: [], isLoading: true, error: null });
     try {
       const { data } = await api.listMessages(id, { page_size: 100 });
       set({ messages: data || [], isLoading: false });
-    } catch {
-      set({ isLoading: false });
+    } catch (err) {
+      set({
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Failed to load messages",
+      });
     }
   },
 
   deleteConversation: async (id: string) => {
-    await api.deleteConversation(id);
-    set((state) => {
-      const conversations = state.conversations.filter((c) => c.id !== id);
-      const activeConversationId =
-        state.activeConversationId === id
-          ? conversations[0]?.id || null
-          : state.activeConversationId;
-      return { conversations, activeConversationId };
-    });
+    try {
+      await api.deleteConversation(id);
+      set((state) => {
+        const conversations = state.conversations.filter((c) => c.id !== id);
+        const activeConversationId =
+          state.activeConversationId === id
+            ? conversations[0]?.id || null
+            : state.activeConversationId;
+        return { conversations, activeConversationId };
+      });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : "Failed to delete conversation" });
+    }
   },
 
-  sendMessage: async (content: string, modelId?: string) => {
-    const { activeConversationId } = get();
+  sendMessage: async (content: string) => {
+    const { activeConversationId, selectedModel } = get();
     if (!activeConversationId) return;
 
-    set({ isSending: true });
+    set({ isSending: true, error: null, streamingContent: "" });
 
     // Optimistic: add user message
     const userMsg: Message = {
@@ -81,27 +108,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
     set((state) => ({ messages: [...state.messages, userMsg] }));
 
-    try {
-      const { data } = await api.sendMessage(activeConversationId, content, modelId);
+    let fullContent = "";
 
-      // Replace temp user message and add assistant message
-      set((state) => ({
-        messages: [
-          ...state.messages.filter((m) => m.id !== userMsg.id),
-          data.user_message,
-          data.assistant_message,
-        ],
-        isSending: false,
-      }));
+    await api.sendMessageStream(
+      activeConversationId,
+      content,
+      selectedModel || undefined,
+      // onChunk
+      (delta: string) => {
+        fullContent += delta;
+        set({ streamingContent: fullContent });
+      },
+      // onUserMessage
+      (msg: Message) => {
+        set((state) => ({
+          messages: state.messages.map((m) =>
+            m.id === userMsg.id ? msg : m
+          ),
+        }));
+      },
+      // onComplete
+      (assistantMsg: Message) => {
+        set((state) => ({
+          messages: [
+            ...state.messages,
+            assistantMsg,
+          ],
+          isSending: false,
+          streamingContent: "",
+        }));
+        // Refresh conversation list
+        get().fetchConversations();
+      },
+      // onError
+      (errorMsg: string) => {
+        set((state) => ({
+          messages: state.messages.filter((m) => m.id !== userMsg.id),
+          isSending: false,
+          streamingContent: "",
+          error: errorMsg,
+        }));
+      }
+    );
+  },
 
-      // Refresh conversation list to update title/message_count
-      get().fetchConversations();
-    } catch {
-      // Remove optimistic message on error
-      set((state) => ({
-        messages: state.messages.filter((m) => m.id !== userMsg.id),
-        isSending: false,
-      }));
-    }
+  setSelectedModel: (model: string) => {
+    set({ selectedModel: model });
+  },
+
+  clearError: () => {
+    set({ error: null });
   },
 }));

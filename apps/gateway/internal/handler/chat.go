@@ -289,6 +289,17 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 	c.Writer.Flush()
 }
 
+// ListModels returns available AI models.
+// GET /api/v1/models
+func (h *ChatHandler) ListModels(c *gin.Context) {
+	// Return models from adapters
+	models := h.chatSvc.ListAvailableModels()
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": models,
+	})
+}
+
 // --- Helper functions ---
 
 func chatUnauthorized(c *gin.Context) {

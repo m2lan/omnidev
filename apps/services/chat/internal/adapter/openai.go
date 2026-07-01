@@ -21,6 +21,7 @@ import (
 type OpenAIAdapter struct {
 	apiKey  string
 	baseURL string
+	models  []string
 	client  *http.Client
 }
 
@@ -31,9 +32,21 @@ func NewOpenAIAdapter(cfg config.AIProviderConfig) *OpenAIAdapter {
 		baseURL = "https://api.openai.com/v1"
 	}
 
+	models := cfg.Models
+	if len(models) == 0 {
+		models = []string{
+			"gpt-4o",
+			"gpt-4o-mini",
+			"gpt-4-turbo",
+			"gpt-4",
+			"gpt-3.5-turbo",
+		}
+	}
+
 	return &OpenAIAdapter{
 		apiKey:  cfg.APIKey,
 		baseURL: baseURL,
+		models:  models,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -45,13 +58,7 @@ func (a *OpenAIAdapter) Provider() string {
 }
 
 func (a *OpenAIAdapter) Models() []string {
-	return []string{
-		"gpt-4o",
-		"gpt-4o-mini",
-		"gpt-4-turbo",
-		"gpt-4",
-		"gpt-3.5-turbo",
-	}
+	return a.models
 }
 
 func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {

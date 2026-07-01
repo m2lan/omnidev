@@ -17,6 +17,7 @@ import (
 type DeepSeekAdapter struct {
 	apiKey  string
 	baseURL string
+	models  []string
 	client  *http.Client
 }
 
@@ -27,9 +28,19 @@ func NewDeepSeekAdapter(cfg config.AIProviderConfig) *DeepSeekAdapter {
 		baseURL = "https://api.deepseek.com/v1"
 	}
 
+	models := cfg.Models
+	if len(models) == 0 {
+		models = []string{
+			"deepseek-chat",
+			"deepseek-coder",
+			"deepseek-reasoner",
+		}
+	}
+
 	return &DeepSeekAdapter{
 		apiKey:  cfg.APIKey,
 		baseURL: baseURL,
+		models:  models,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -41,11 +52,7 @@ func (a *DeepSeekAdapter) Provider() string {
 }
 
 func (a *DeepSeekAdapter) Models() []string {
-	return []string{
-		"deepseek-chat",
-		"deepseek-coder",
-		"deepseek-reasoner",
-	}
+	return a.models
 }
 
 func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {

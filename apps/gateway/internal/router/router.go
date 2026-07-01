@@ -63,6 +63,9 @@ func Setup(
 				conversations.POST("/:id/messages/stream", chatHandler.StreamMessage)
 			}
 
+			// Models
+			protected.GET("/models", chatHandler.ListModels)
+
 			// Prompts
 			prompts := protected.Group("/prompts")
 			{

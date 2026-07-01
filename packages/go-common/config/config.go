@@ -130,8 +130,9 @@ type AIConfig struct {
 
 // AIProviderConfig holds settings for a single AI provider.
 type AIProviderConfig struct {
-	APIKey  string `mapstructure:"api_key"`
-	BaseURL string `mapstructure:"base_url"`
+	APIKey  string   `mapstructure:"api_key"`
+	BaseURL string   `mapstructure:"base_url"`
+	Models  []string `mapstructure:"models"`
 }
 
 // SandboxConfig holds sandbox execution settings.

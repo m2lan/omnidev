@@ -15,6 +15,7 @@ import (
 // OllamaAdapter implements the Adapter interface for local Ollama.
 type OllamaAdapter struct {
 	baseURL string
+	models  []string
 	client  *http.Client
 }
 
@@ -25,8 +26,22 @@ func NewOllamaAdapter(cfg config.AIProviderConfig) *OllamaAdapter {
 		baseURL = "http://localhost:11434"
 	}
 
+	models := cfg.Models
+	if len(models) == 0 {
+		models = []string{
+			"llama3.1",
+			"llama3",
+			"mistral",
+			"codellama",
+			"phi3",
+			"gemma2",
+			"qwen2",
+		}
+	}
+
 	return &OllamaAdapter{
 		baseURL: baseURL,
+		models:  models,
 		client: &http.Client{
 			Timeout: 300 * time.Second,
 		},
@@ -38,15 +53,7 @@ func (a *OllamaAdapter) Provider() string {
 }
 
 func (a *OllamaAdapter) Models() []string {
-	return []string{
-		"llama3.1",
-		"llama3",
-		"mistral",
-		"codellama",
-		"phi3",
-		"gemma2",
-		"qwen2",
-	}
+	return a.models
 }
 
 func (a *OllamaAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {

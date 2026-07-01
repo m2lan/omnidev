@@ -203,6 +203,100 @@ class ApiClient {
     );
   }
 
+  // Streaming send
+  async sendMessageStream(
+    conversationId: string,
+    content: string,
+    modelId: string | undefined,
+    onChunk: (delta: string) => void,
+    onUserMessage: (msg: Message) => void,
+    onComplete: (assistantMsg: Message) => void,
+    onError: (error: string) => void
+  ) {
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/api/v1/conversations/${conversationId}/messages/stream`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ content, model_id: modelId }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({
+          error: { message: response.statusText },
+        }));
+        onError(error.error?.message || "Request failed");
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        onError("No response body");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            // Parse SSE event type
+            const eventType = line.slice(7).trim();
+            continue;
+          }
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "{}") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // Check for user_message event
+              if (parsed.id && parsed.role === "user") {
+                onUserMessage(parsed);
+                continue;
+              }
+
+              // Check for delta content
+              if (parsed.delta) {
+                onChunk(parsed.delta);
+                continue;
+              }
+
+              // Check for complete message
+              if (parsed.id && parsed.role === "assistant") {
+                onComplete(parsed);
+                continue;
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Stream failed");
+    }
+  }
+
   // Knowledge
   async listKnowledgeBases(params?: ListParams) {
     const query = new URLSearchParams();

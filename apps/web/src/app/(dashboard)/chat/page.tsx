@@ -13,11 +13,16 @@ export default function ChatPage() {
     messages,
     isLoading,
     isSending,
+    streamingContent,
+    error,
+    selectedModel,
     fetchConversations,
     createConversation,
     setActiveConversation,
     deleteConversation,
     sendMessage,
+    setSelectedModel,
+    clearError,
   } = useChatStore();
 
   useEffect(() => {
@@ -38,11 +43,9 @@ export default function ChatPage() {
 
   const handleSendMessage = async (content: string) => {
     if (!activeConversationId) {
-      const conv = await createConversation();
-      await sendMessage(content);
-    } else {
-      await sendMessage(content);
+      await createConversation();
     }
+    await sendMessage(content);
   };
 
   return (
@@ -68,7 +71,12 @@ export default function ChatPage() {
         <ChatArea
           messages={messages}
           isSending={isSending}
+          streamingContent={streamingContent}
+          error={error}
+          selectedModel={selectedModel}
           onSend={handleSendMessage}
+          onModelChange={setSelectedModel}
+          onClearError={clearError}
           hasConversation={!!activeConversationId}
         />
       </div>

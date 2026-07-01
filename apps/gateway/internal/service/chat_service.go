@@ -418,9 +418,31 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 	return ch, userMsg, nil
 }
 
-// ListModels returns available AI models.
+// ListModels returns available AI models from database.
 func (s *ChatService) ListModels(ctx context.Context) ([]*domain.Model, error) {
 	return s.modelRepo.List(ctx, true)
+}
+
+// ListAvailableModels returns models from registered adapters.
+func (s *ChatService) ListAvailableModels() []map[string]interface{} {
+	var models []map[string]interface{}
+	id := 0
+	for _, provider := range s.adapters.Providers() {
+		adapter, err := s.adapters.Get(provider)
+		if err != nil {
+			continue
+		}
+		for _, modelID := range adapter.Models() {
+			id++
+			models = append(models, map[string]interface{}{
+				"id":           fmt.Sprintf("%d", id),
+				"provider":     provider,
+				"model_id":     modelID,
+				"display_name": modelID,
+			})
+		}
+	}
+	return models
 }
 
 // emitUsageEvent publishes a usage event for billing.

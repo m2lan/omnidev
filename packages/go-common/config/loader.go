@@ -151,12 +151,15 @@ func bindEnvVars(v *viper.Viper) {
 		"JWT_ISSUER":          "jwt.issuer",
 		"OPENAI_API_KEY":      "ai.openai.api_key",
 		"OPENAI_BASE_URL":     "ai.openai.base_url",
+		"OPENAI_MODELS":       "ai.openai.models",
 		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
 		"GOOGLE_API_KEY":      "ai.google.api_key",
 		"AI_DEFAULT_MODEL":    "ai.default_model",
 		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
+		"DEEPSEEK_MODELS":     "ai.deepseek.models",
 		"QWEN_API_KEY":        "ai.qwen.api_key",
 		"OLLAMA_BASE_URL":     "ai.ollama.base_url",
+		"OLLAMA_MODELS":       "ai.ollama.models",
 		"GITHUB_CLIENT_ID":    "oauth.github.client_id",
 		"GITHUB_CLIENT_SECRET": "oauth.github.client_secret",
 		"GITHUB_REDIRECT_URL": "oauth.github.redirect_url",
@@ -205,12 +208,15 @@ func applyEnvFileOverrides(v *viper.Viper) {
 		"JWT_ISSUER":          "jwt.issuer",
 		"OPENAI_API_KEY":      "ai.openai.api_key",
 		"OPENAI_BASE_URL":     "ai.openai.base_url",
+		"OPENAI_MODELS":       "ai.openai.models",
 		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
 		"GOOGLE_API_KEY":      "ai.google.api_key",
 		"AI_DEFAULT_MODEL":    "ai.default_model",
 		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
+		"DEEPSEEK_MODELS":     "ai.deepseek.models",
 		"QWEN_API_KEY":        "ai.qwen.api_key",
 		"OLLAMA_BASE_URL":     "ai.ollama.base_url",
+		"OLLAMA_MODELS":       "ai.ollama.models",
 		"GITHUB_CLIENT_ID":    "oauth.github.client_id",
 		"GITHUB_CLIENT_SECRET": "oauth.github.client_secret",
 		"GITHUB_REDIRECT_URL": "oauth.github.redirect_url",
@@ -220,8 +226,24 @@ func applyEnvFileOverrides(v *viper.Viper) {
 	}
 
 	for envKey, cfgKey := range envMap {
-		if v.GetString(cfgKey) == "" && v.GetString(envKey) != "" {
+		if v.GetString(envKey) != "" {
 			v.Set(cfgKey, v.GetString(envKey))
+		}
+	}
+
+	// Parse comma-separated model lists
+	modelKeys := []string{
+		"ai.openai.models",
+		"ai.deepseek.models",
+		"ai.ollama.models",
+		"ai.anthropic.models",
+		"ai.google.models",
+		"ai.qwen.models",
+	}
+	for _, key := range modelKeys {
+		val := v.GetString(key)
+		if val != "" && strings.Contains(val, ",") {
+			v.Set(key, strings.Split(val, ","))
 		}
 	}
 }
