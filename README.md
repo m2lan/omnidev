@@ -1,10 +1,12 @@
 # OmniDev AI Platform
 
-All-in-One AI 开发平台，融合 IDE、Agent、RAG、Workflow、Deploy 等能力。
+[中文](README_zh.md)
 
-## 快速开始
+All-in-One AI development platform integrating IDE, Agent, RAG, Workflow, Deploy and more.
 
-### 前置条件
+## Quick Start
+
+### Prerequisites
 
 - Go 1.22+
 - Node.js 20+
@@ -12,60 +14,60 @@ All-in-One AI 开发平台，融合 IDE、Agent、RAG、Workflow、Deploy 等能
 - Docker & Docker Compose
 - Make
 
-### 1. 克隆项目
+### 1. Clone the Project
 
 ```bash
 git clone git@github.com:m2lan/omnidev.git
 cd omnidev
 ```
 
-### 2. 环境配置
+### 2. Environment Configuration
 
 ```bash
 cp .env.example .env
-# 编辑 .env 设置你的 API Key 等配置
+# Edit .env to set your API Key and other configurations
 ```
 
-### 3. 启动基础设施
+### 3. Start Infrastructure
 
 ```bash
-# 启动 PostgreSQL, Redis, Kafka, MinIO, Elasticsearch, Temporal
+# Start PostgreSQL, Redis, Kafka, MinIO, Elasticsearch, Temporal
 make dev-infra
 
-# 查看状态
+# Check status
 make dev-status
 ```
 
-### 4. 安装依赖
+### 4. Install Dependencies
 
 ```bash
-# Go 依赖
+# Go dependencies
 make go-mod
 
-# 前端依赖
+# Frontend dependencies
 make web-install
 ```
 
-### 5. 运行数据库迁移
+### 5. Run Database Migrations
 
 ```bash
 make db-migrate
 ```
 
-### 6. 启动开发服务器
+### 6. Start Development Servers
 
 ```bash
-# 启动 API Gateway
+# Start API Gateway
 make run-gateway
 
-# 启动前端 (另一个终端)
+# Start frontend (another terminal)
 make web-dev
 ```
 
-### 7. 访问
+### 7. Access
 
-| 服务 | 地址 |
-|------|------|
+| Service | URL |
+|---------|-----|
 | Web App | http://localhost:3000 |
 | API Gateway | http://localhost:8080 |
 | Health Check | http://localhost:8080/health |
@@ -79,80 +81,80 @@ make web-dev
 | Grafana | http://localhost:3001 |
 | Prometheus | http://localhost:9090 |
 
-## 项目结构
+## Project Structure
 
 ```
 omnidev/
-├── apps/                    # 应用层
-│   ├── web/                 # 前端 Next.js
+├── apps/                    # Application layer
+│   ├── web/                 # Frontend Next.js
 │   ├── gateway/             # API Gateway (Go)
-│   ├── services/            # 后端微服务
-│   └── workers/             # 后台工作者
-├── packages/                # 共享包
-│   ├── proto/               # Protobuf 定义
-│   ├── go-common/           # Go 公共库
-│   ├── ts-common/           # TypeScript 公共库
-│   └── ui/                  # UI 组件库
-├── deploy/                  # 部署配置
+│   ├── services/            # Backend microservices
+│   └── workers/             # Background workers
+├── packages/                # Shared packages
+│   ├── proto/               # Protobuf definitions
+│   ├── go-common/           # Go common library
+│   ├── ts-common/           # TypeScript common library
+│   └── ui/                  # UI component library
+├── deploy/                  # Deployment configs
 │   ├── docker/              # Docker Compose
 │   ├── helm/                # Helm Charts
-│   ├── terraform/           # Terraform 配置
-│   └── k8s/                 # K8s 清单
-├── docs/                    # 文档
-├── scripts/                 # 工具脚本
-└── tools/                   # 开发工具
+│   ├── terraform/           # Terraform configs
+│   └── k8s/                 # K8s manifests
+├── docs/                    # Documentation
+├── scripts/                 # Utility scripts
+└── tools/                   # Development tools
 ```
 
-## 开发命令
+## Development Commands
 
 ```bash
-# 查看所有命令
+# View all commands
 make help
 
-# 开发环境
-make dev              # 启动完整开发环境
-make dev-infra        # 仅启动基础设施
-make dev-down         # 停止开发环境
-make dev-logs         # 查看日志
+# Development environment
+make dev              # Start full development environment
+make dev-infra        # Start infrastructure only
+make dev-down         # Stop development environment
+make dev-logs         # View logs
 
-# 构建
-make build-all        # 构建所有服务
-make build-gateway    # 构建 API Gateway
+# Build
+make build-all        # Build all services
+make build-gateway    # Build API Gateway
 
-# 测试
-make test             # 运行所有测试
-make test-short       # 运行短测试
-make test-integration # 运行集成测试
-make test-coverage    # 生成覆盖率报告
+# Test
+make test             # Run all tests
+make test-short       # Run short tests
+make test-integration # Run integration tests
+make test-coverage    # Generate coverage report
 
-# 代码质量
-make lint             # 运行 linter
-make fmt              # 格式化代码
-make check            # 运行所有检查
+# Code quality
+make lint             # Run linter
+make fmt              # Format code
+make check            # Run all checks
 
-# 代码生成
-make gen-proto        # 生成 Protobuf 代码
-make gen-wire         # 生成 Wire 代码
-make gen-swagger      # 生成 API 文档
+# Code generation
+make gen-proto        # Generate Protobuf code
+make gen-wire         # Generate Wire code
+make gen-swagger      # Generate API docs
 
-# 数据库
-make db-migrate       # 运行迁移
-make db-migrate-down  # 回滚迁移
-make db-migrate-create NAME=create_xxx  # 创建新迁移
+# Database
+make db-migrate       # Run migrations
+make db-migrate-down  # Rollback migration
+make db-migrate-create NAME=create_xxx  # Create new migration
 
 # Docker
-make docker-build     # 构建所有 Docker 镜像
-make docker-build-gateway  # 构建单个镜像
+make docker-build     # Build all Docker images
+make docker-build-gateway  # Build single image
 
 # Kubernetes
-make k8s-apply        # 部署到 K8s
-make helm-install     # 安装 Helm Chart
+make k8s-apply        # Deploy to K8s
+make helm-install     # Install Helm Chart
 ```
 
-## 技术栈
+## Tech Stack
 
-| 层级 | 技术 |
-|------|------|
+| Layer | Technology |
+|-------|------------|
 | Frontend | Next.js 15, React 19, Tailwind, Shadcn/ui |
 | API Gateway | Go, Gin |
 | Backend | Go, gRPC |
@@ -165,39 +167,39 @@ make helm-install     # 安装 Helm Chart
 | Container | Docker, Kubernetes |
 | Observability | Prometheus, Grafana, Loki, Jaeger |
 
-## 架构文档
+## Architecture Documentation
 
-详细架构文档位于 `docs/architecture/` 目录：
+Detailed architecture documentation is located in the `docs/architecture/` directory:
 
-- [执行摘要](docs/architecture/00-EXECUTIVE-SUMMARY.md)
-- [需求分析](docs/architecture/01-REQUIREMENTS-ANALYSIS.md)
-- [功能边界](docs/architecture/02-FEATURE-BOUNDARY.md)
-- [非功能需求](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md)
-- [技术选型](docs/architecture/04-TECHNOLOGY-SELECTION.md)
-- [系统架构](docs/architecture/05-SYSTEM-ARCHITECTURE.md)
-- [数据库设计](docs/architecture/06-DATABASE-DESIGN.md)
-- [目录结构](docs/architecture/07-DIRECTORY-STRUCTURE.md)
-- [开发规范](docs/architecture/08-DEVELOPMENT-STANDARDS.md)
-- [里程碑规划](docs/architecture/09-MILESTONE-PLAN.md)
+- [Executive Summary](docs/architecture/00-EXECUTIVE-SUMMARY.md)
+- [Requirements Analysis](docs/architecture/01-REQUIREMENTS-ANALYSIS.md)
+- [Feature Boundary](docs/architecture/02-FEATURE-BOUNDARY.md)
+- [Non-Functional Requirements](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md)
+- [Technology Selection](docs/architecture/04-TECHNOLOGY-SELECTION.md)
+- [System Architecture](docs/architecture/05-SYSTEM-ARCHITECTURE.md)
+- [Database Design](docs/architecture/06-DATABASE-DESIGN.md)
+- [Directory Structure](docs/architecture/07-DIRECTORY-STRUCTURE.md)
+- [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md)
+- [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md)
 
-## API 文档
+## API Documentation
 
-API 遵循 RESTful 规范，所有响应格式：
+The API follows RESTful conventions. All response formats:
 
 ```json
-// 成功
+// Success
 {
   "data": { ... },
   "meta": { "page_size": 20, "next_page_token": "...", "total_count": 100 }
 }
 
-// 错误
+// Error
 {
   "error": { "code": 400, "message": "...", "detail": "...", "request_id": "..." }
 }
 ```
 
-### 认证
+### Authentication
 
 ```bash
 # Bearer Token
@@ -207,61 +209,61 @@ curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/users/me
 curl -H "Authorization: Bearer <api-key>" http://localhost:8080/api/v1/users/me
 ```
 
-## 故障排查
+## Troubleshooting
 
-### 数据库连接失败
+### Database Connection Failed
 
 ```bash
-# 检查 PostgreSQL 是否运行
+# Check if PostgreSQL is running
 docker compose -f deploy/docker/docker-compose.infra.yml ps postgres
 
-# 查看日志
+# View logs
 docker compose -f deploy/docker/docker-compose.infra.yml logs postgres
 ```
 
-### Redis 连接失败
+### Redis Connection Failed
 
 ```bash
-# 检查 Redis 是否运行
+# Check if Redis is running
 docker compose -f deploy/docker/docker-compose.infra.yml ps redis
 
-# 测试连接
+# Test connection
 docker compose -f deploy/docker/docker-compose.infra.yml exec redis redis-cli ping
 ```
 
-### 端口被占用
+### Port Already in Use
 
 ```bash
-# 查看占用端口的进程
+# Find process using the port
 netstat -ano | findstr :8080
-# 或
+# or
 lsof -i :8080
 
-# 杀死进程
+# Kill process
 taskkill /PID <pid> /F
 ```
 
-### Go 模块问题
+### Go Module Issues
 
 ```bash
-# 清理模块缓存
+# Clean module cache
 go clean -modcache
 
-# 重新下载
+# Re-download
 go mod download all
 
-# 同步 workspace
+# Sync workspace
 go work sync
 ```
 
-## 贡献指南
+## Contributing
 
-1. Fork 项目
-2. 创建功能分支: `git checkout -b feature/my-feature`
-3. 提交更改: `git commit -m 'feat(scope): add my feature'`
-4. 推送分支: `git push origin feature/my-feature`
-5. 创建 Pull Request
+1. Fork the project
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Commit changes: `git commit -m 'feat(scope): add my feature'`
+4. Push branch: `git push origin feature/my-feature`
+5. Create a Pull Request
 
-## 许可证
+## License
 
 [MIT License](LICENSE)
