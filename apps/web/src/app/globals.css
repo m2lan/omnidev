@@ -93,14 +93,6 @@
   animation: fadeIn 0.2s ease-out;
 }
 
-/* Code block styling */
-pre code {
-  display: block;
-  overflow-x: auto;
-  padding: 1rem;
-  border-radius: 0.5rem;
-}
-
 /* Markdown styling */
 .markdown-body h1,
 .markdown-body h2,
@@ -153,4 +145,54 @@ pre code {
 .markdown-body th {
   background: hsl(var(--muted));
   font-weight: 600;
+}
+
+/* Override syntax highlighter scrollbar */
+.markdown-body pre {
+  margin: 1em 0;
+}
+
+.markdown-body pre::-webkit-scrollbar {
+  height: 6px;
+}
+
+.markdown-body pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+/* Global overflow prevention for chat */
+.chat-message,
+.markdown-body,
+.markdown-body * {
+  max-width: 100% !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-body pre,
+.markdown-body code,
+.markdown-body pre code {
+  word-break: break-all !important;
+  white-space: pre-wrap !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.markdown-body img {
+  max-width: 100% !important;
+  height: auto;
+}
+
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100% !important;
+}
+
+/* Force syntax highlighter to not overflow */
+.markdown-body pre > div,
+.markdown-body pre > div > div {
+  max-width: 100% !important;
+  overflow: hidden !important;
 }

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 
 interface ChatAreaProps {
   messages: Message[];
+  isLoading: boolean;
   isSending: boolean;
   streamingContent: string;
   error: string | null;
@@ -20,6 +21,7 @@ interface ChatAreaProps {
 
 export function ChatArea({
   messages,
+  isLoading,
   isSending,
   streamingContent,
   error,
@@ -120,11 +122,39 @@ export function ChatArea({
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
+          <div className="w-full max-w-full space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="h-8 w-8 rounded-full bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted rounded w-3/4" />
+                  <div className="h-4 bg-muted rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="w-full mx-auto py-6 px-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="w-full mx-auto py-6 px-4 max-w-full break-words overflow-hidden">
+          {/* Load more hint */}
+          {messages.length >= 10 && (
+            <div className="text-center mb-4">
+              <span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                Showing last 10 messages
+              </span>
+            </div>
+          )}
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}

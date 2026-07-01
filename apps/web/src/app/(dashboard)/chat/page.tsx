@@ -29,8 +29,13 @@ export default function ChatPage() {
     fetchConversations();
   }, [fetchConversations]);
 
-  const handleNewChat = async () => {
-    await createConversation();
+  const handleNewChat = () => {
+    // Just reset to empty state, conversation will be created on first message
+    useChatStore.setState({
+      activeConversationId: null,
+      messages: [],
+      error: null,
+    });
   };
 
   const handleSelectConversation = (id: string) => {
@@ -42,9 +47,6 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!activeConversationId) {
-      await createConversation();
-    }
     await sendMessage(content);
   };
 
@@ -70,6 +72,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-h-0">
         <ChatArea
           messages={messages}
+          isLoading={isLoading}
           isSending={isSending}
           streamingContent={streamingContent}
           error={error}

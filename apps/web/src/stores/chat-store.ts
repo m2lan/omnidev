@@ -66,7 +66,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setActiveConversation: async (id: string) => {
     set({ activeConversationId: id, messages: [], isLoading: true, error: null });
     try {
-      const { data } = await api.listMessages(id, { page_size: 100 });
+      // Only load last 10 messages for performance
+      const { data } = await api.listMessages(id, { page_size: 10 });
       set({ messages: data || [], isLoading: false });
     } catch (err) {
       set({
@@ -93,8 +94,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (content: string) => {
-    const { activeConversationId, selectedModel } = get();
-    if (!activeConversationId) return;
+    let { activeConversationId } = get();
+    const { selectedModel } = get();
+
+    // Create conversation if none exists
+    if (!activeConversationId) {
+      try {
+        const conv = await get().createConversation();
+        activeConversationId = conv.id;
+      } catch {
+        return;
+      }
+    }
 
     set({ isSending: true, error: null, streamingContent: "" });
 
