@@ -100,10 +100,11 @@ function HtmlPreview({ html }: { html: string }) {
 }
 
 export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
-  const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   // Track active tab per HTML code block (index -> 'code' | 'preview')
   const [htmlTabs, setHtmlTabs] = useState<Record<number, 'code' | 'preview'>>({});
+  // Track copied state per code block (index -> boolean)
+  const [copiedBlocks, setCopiedBlocks] = useState<Record<number, boolean>>({});
   // Ref for counting code blocks during render (avoids re-render loop)
   const codeBlockCounterRef = useRef(0);
 
@@ -138,12 +139,6 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
   const displayMessage = shouldTruncate
     ? { ...message, content: getTruncatedContent(message.content, MAX_LENGTH) }
     : message;
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   // Reset code block counter at start of each render
   codeBlockCounterRef.current = 0;
@@ -214,6 +209,15 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
                     codeBlockCounterRef.current++;
                     const activeTab = htmlTabs[blockIndex] || "code";
                     const htmlContent = String(children).replace(/\n$/, "");
+                    const isBlockCopied = copiedBlocks[blockIndex] || false;
+
+                    const handleBlockCopy = () => {
+                      navigator.clipboard.writeText(htmlContent);
+                      setCopiedBlocks(prev => ({ ...prev, [blockIndex]: true }));
+                      setTimeout(() => {
+                        setCopiedBlocks(prev => ({ ...prev, [blockIndex]: false }));
+                      }, 2000);
+                    };
 
                     return (
                       <div className="relative group overflow-hidden rounded-lg max-w-full">
@@ -250,10 +254,10 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
                             </span>
                           )}
                           <button
-                            onClick={handleCopy}
+                            onClick={handleBlockCopy}
                             className="rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted-foreground/20 opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            {copied ? "Copied!" : "Copy"}
+                            {isBlockCopied ? "Copied!" : "Copy"}
                           </button>
                         </div>
                         {isHtml && activeTab === 'preview' ? (
