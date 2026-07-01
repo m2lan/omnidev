@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo } from "react";
+import { useState, useCallback, useRef, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -13,32 +13,103 @@ interface MessageBubbleProps {
   message: Message;
 }
 
-// Pre-process content to wrap HTML documents in code blocks
-// Only triggers when content STARTS with a full HTML document
+// Pre-process markdown content for proper code block rendering
 function preprocessContent(content: string): string {
-  // Already wrapped in code block
+  // Fix inline code fences: ``` not at line start → insert newline before it
+  // AI sometimes outputs "...text```html\n..." without a line break
+  content = content.replace(/([^\n])```(\w*)\n/g, '$1\n```$2\n');
+
+  // Already starts with a code block
   if (content.trimStart().startsWith('```')) {
     return content;
   }
 
   const trimmed = content.trimStart();
 
-  // Only detect HTML at the very beginning of content
-  const startsWithHtml =
+  // Full HTML document at the start → wrap in code block
+  if (
     trimmed.startsWith('<!DOCTYPE') ||
     trimmed.startsWith('<html') ||
-    trimmed.startsWith('<HTML');
-
-  if (startsWithHtml) {
+    trimmed.startsWith('<HTML')
+  ) {
     return '```html\n' + content + '\n```';
   }
 
   return content;
 }
 
+// Check if HTML content is a complete document or a fragment
+function isCompleteHtmlDocument(html: string): boolean {
+  const trimmed = html.trimStart().toLowerCase();
+  return trimmed.startsWith('<!doctype') || trimmed.startsWith('<html');
+}
+
+// Wrap HTML fragment in a complete document structure
+function wrapHtmlFragment(html: string): string {
+  if (isCompleteHtmlDocument(html)) {
+    return html;
+  }
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+}
+
+// Sandboxed iframe preview component for HTML content
+function HtmlPreview({ html }: { html: string }) {
+  const srcdoc = wrapHtmlFragment(html);
+
+  return (
+    <div className="w-full bg-white rounded-b-lg overflow-hidden" style={{ minHeight: 200 }}>
+      <iframe
+        srcDoc={srcdoc}
+        sandbox="allow-scripts allow-same-origin"
+        className="w-full border-0"
+        style={{ minHeight: 200, height: 'auto' }}
+        title="HTML Preview"
+        onLoad={(e) => {
+          // Auto-resize iframe to content height
+          const iframe = e.currentTarget;
+          try {
+            const doc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (doc) {
+              const height = Math.max(
+                doc.documentElement.scrollHeight,
+                doc.body.scrollHeight,
+                200
+              );
+              iframe.style.height = `${Math.min(height, 600)}px`;
+            }
+          } catch {
+            // Cross-origin restrictions - use fixed height
+            iframe.style.height = '400px';
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Track active tab per HTML code block (index -> 'code' | 'preview')
+  const [htmlTabs, setHtmlTabs] = useState<Record<number, 'code' | 'preview'>>({});
+  // Ref for counting code blocks during render (avoids re-render loop)
+  const codeBlockCounterRef = useRef(0);
+
+  const toggleHtmlTab = useCallback((index: number, tab: 'code' | 'preview') => {
+    setHtmlTabs(prev => ({ ...prev, [index]: tab }));
+  }, []);
 
   const isUser = message.role === "user";
   const isStreaming = message.id === "streaming";
@@ -73,6 +144,9 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Reset code block counter at start of each render
+  codeBlockCounterRef.current = 0;
 
   return (
     <div
@@ -134,9 +208,42 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
                       );
                     }
 
+                    const isHtml = language === "html";
+                    // Use ref counter for unique index per code block
+                    const blockIndex = codeBlockCounterRef.current;
+                    codeBlockCounterRef.current++;
+                    const activeTab = htmlTabs[blockIndex] || "code";
+                    const htmlContent = String(children).replace(/\n$/, "");
+
                     return (
                       <div className="relative group overflow-hidden rounded-lg max-w-full">
                         <div className="absolute right-2 top-2 z-10 flex items-center gap-2">
+                          {isHtml && (
+                            <div className="flex items-center bg-background/80 rounded overflow-hidden">
+                              <button
+                                onClick={() => toggleHtmlTab(blockIndex, 'code')}
+                                className={cn(
+                                  "px-2 py-0.5 text-xs transition-colors",
+                                  activeTab === 'code'
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted-foreground/20"
+                                )}
+                              >
+                                Code
+                              </button>
+                              <button
+                                onClick={() => toggleHtmlTab(blockIndex, 'preview')}
+                                className={cn(
+                                  "px-2 py-0.5 text-xs transition-colors",
+                                  activeTab === 'preview'
+                                    ? "bg-primary text-primary-foreground"
+                                    : "text-muted-foreground hover:bg-muted-foreground/20"
+                                )}
+                              >
+                                Preview
+                              </button>
+                            </div>
+                          )}
                           {language && (
                             <span className="text-xs text-muted-foreground bg-background/80 px-2 py-0.5 rounded">
                               {language}
@@ -149,24 +256,28 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
                             {copied ? "Copied!" : "Copy"}
                           </button>
                         </div>
-                        <SyntaxHighlighter
-                          language={language || "text"}
-                          style={oneDark}
-                          customStyle={{
-                            margin: 0,
-                            borderRadius: "0.5rem",
-                            padding: "2.5rem 1rem 1rem",
-                            fontSize: "0.85rem",
-                            wordBreak: "break-all",
-                            whiteSpace: "pre-wrap",
-                            maxWidth: "100%",
-                            overflow: "hidden",
-                          }}
-                          wrapLongLines={true}
-                          showLineNumbers={false}
-                        >
-                          {String(children).replace(/\n$/, "")}
-                        </SyntaxHighlighter>
+                        {isHtml && activeTab === 'preview' ? (
+                          <HtmlPreview html={htmlContent} />
+                        ) : (
+                          <SyntaxHighlighter
+                            language={language || "text"}
+                            style={oneDark}
+                            customStyle={{
+                              margin: 0,
+                              borderRadius: "0.5rem",
+                              padding: "2.5rem 1rem 1rem",
+                              fontSize: "0.85rem",
+                              wordBreak: "break-all",
+                              whiteSpace: "pre-wrap",
+                              maxWidth: "100%",
+                              overflow: "hidden",
+                            }}
+                            wrapLongLines={true}
+                            showLineNumbers={false}
+                          >
+                            {htmlContent}
+                          </SyntaxHighlighter>
+                        )}
                       </div>
                     );
                   },

@@ -292,12 +292,16 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 // ListModels returns available AI models.
 // GET /api/v1/models
 func (h *ChatHandler) ListModels(c *gin.Context) {
-	// Return models from adapters
-	models := h.chatSvc.ListAvailableModels()
+	// Try to get user ID for personalized model list
+	if userID, ok := middleware.GetUserID(c); ok {
+		models := h.chatSvc.ListAvailableModelsForUser(c.Request.Context(), userID)
+		c.JSON(http.StatusOK, gin.H{"data": models})
+		return
+	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": models,
-	})
+	// Fallback to global models
+	models := h.chatSvc.ListAvailableModels()
+	c.JSON(http.StatusOK, gin.H{"data": models})
 }
 
 // --- Helper functions ---

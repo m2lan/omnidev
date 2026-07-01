@@ -16,6 +16,7 @@ import (
 	"github.com/omnidev/go-common/auth"
 	"github.com/omnidev/go-common/cache"
 	"github.com/omnidev/go-common/config"
+	"github.com/omnidev/go-common/crypto"
 	"github.com/omnidev/go-common/database"
 	"github.com/omnidev/go-common/logger"
 	"github.com/omnidev/go-common/middleware"
@@ -108,13 +109,27 @@ func main() {
 	adapterRegistry.Register(adapter.NewDeepSeekAdapter(cfg.AI.DeepSeek))
 	adapterRegistry.Register(adapter.NewOpenAIAdapter(cfg.AI.OpenAI))
 
+	// Initialize encryption for user AI configs
+	var adapterFactory *adapter.Factory
+	var userAIConfigRepo repository.UserAIConfigRepository
+	if cfg.Security.EncryptionKey != "" {
+		encryptor, err := crypto.NewEncryptorFromString(cfg.Security.EncryptionKey)
+		if err != nil {
+			logger.Log.Warn("Failed to init encryptor, user AI configs disabled", zap.Error(err))
+		} else {
+			adapterFactory = adapter.NewFactory(encryptor)
+			userAIConfigRepo = repository.NewUserAIConfigRepository(db.Pool)
+		}
+	}
+
 	// Initialize services
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, redisClient, cfg.AI.DefaultModel)
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
 	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
 	chatHandler := handler.NewChatHandler(chatService)
+	userAIConfigHandler := handler.NewUserAIConfigProxyHandler("")
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
@@ -136,7 +151,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

@@ -53,6 +53,31 @@ func NewOpenAIAdapter(cfg config.AIProviderConfig) *OpenAIAdapter {
 	}
 }
 
+// NewOpenAIAdapterFromConfig creates an OpenAI adapter from explicit config values.
+func NewOpenAIAdapterFromConfig(apiKey, baseURL string, models []string) *OpenAIAdapter {
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	if len(models) == 0 {
+		models = []string{
+			"gpt-4o",
+			"gpt-4o-mini",
+			"gpt-4-turbo",
+			"gpt-4",
+			"gpt-3.5-turbo",
+		}
+	}
+
+	return &OpenAIAdapter{
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		models:  models,
+		client: &http.Client{
+			Timeout: 10 * time.Minute,
+		},
+	}
+}
+
 func (a *OpenAIAdapter) Provider() string {
 	return "openai"
 }

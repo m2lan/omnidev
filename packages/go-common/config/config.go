@@ -18,6 +18,7 @@ type Config struct {
 	JWT        JWTConfig        `mapstructure:"jwt"`
 	OAuth      OAuthConfig      `mapstructure:"oauth"`
 	AI         AIConfig         `mapstructure:"ai"`
+	Security   SecurityConfig   `mapstructure:"security"`
 	Sandbox    SandboxConfig    `mapstructure:"sandbox"`
 	Telemetry  TelemetryConfig  `mapstructure:"telemetry"`
 }
@@ -133,6 +134,11 @@ type AIProviderConfig struct {
 	APIKey  string   `mapstructure:"api_key"`
 	BaseURL string   `mapstructure:"base_url"`
 	Models  []string `mapstructure:"models"`
+}
+
+// SecurityConfig holds security-related settings.
+type SecurityConfig struct {
+	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
 // SandboxConfig holds sandbox execution settings.

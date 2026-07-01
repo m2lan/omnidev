@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
-import { api } from "@/lib/api/client";
+import { api, UserAIConfig, CreateAIConfigInput, TestConnectionResult } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AIConfigCard } from "@/components/settings/ai-config-card";
+import { AIConfigForm } from "@/components/settings/ai-config-form";
 
 interface APIKey {
   id: string;
@@ -31,10 +33,15 @@ export default function SettingsPage() {
   const [newKeyName, setNewKeyName] = useState("");
   const [isCreatingKey, setIsCreatingKey] = useState(false);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [aiConfigs, setAiConfigs] = useState<UserAIConfig[]>([]);
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(true);
+  const [showConfigForm, setShowConfigForm] = useState(false);
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
 
-  // Fetch API keys on mount
+  // Fetch API keys and AI configs on mount
   useEffect(() => {
     loadAPIKeys();
+    loadAIConfigs();
   }, []);
 
   // Update local state when user changes
@@ -54,6 +61,56 @@ export default function SettingsPage() {
     } finally {
       setIsLoadingKeys(false);
     }
+  };
+
+  const loadAIConfigs = async () => {
+    try {
+      setIsLoadingConfigs(true);
+      const { data } = await api.listAIConfigs();
+      setAiConfigs(data || []);
+    } catch (error) {
+      console.error("Failed to load AI configs:", error);
+    } finally {
+      setIsLoadingConfigs(false);
+    }
+  };
+
+  const handleCreateAIConfig = async (input: CreateAIConfigInput) => {
+    setIsSavingConfig(true);
+    try {
+      await api.createAIConfig(input);
+      await loadAIConfigs();
+      setShowConfigForm(false);
+    } catch (error) {
+      console.error("Failed to create AI config:", error);
+      alert("Failed to create configuration");
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
+  const handleDeleteAIConfig = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this configuration?")) return;
+    try {
+      await api.deleteAIConfig(id);
+      await loadAIConfigs();
+    } catch (error) {
+      console.error("Failed to delete AI config:", error);
+    }
+  };
+
+  const handleSetDefaultAIConfig = async (id: string) => {
+    try {
+      await api.setDefaultAIConfig(id);
+      await loadAIConfigs();
+    } catch (error) {
+      console.error("Failed to set default AI config:", error);
+    }
+  };
+
+  const handleTestAIConfig = async (id: string): Promise<TestConnectionResult> => {
+    const { data } = await api.testAIConfigConnection(id);
+    return data;
   };
 
   const handleSave = async () => {
@@ -191,6 +248,50 @@ export default function SettingsPage() {
                     Revoke
                   </Button>
                 </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* AI Configs */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>AI Providers</CardTitle>
+              <CardDescription>Configure your AI provider connections</CardDescription>
+            </div>
+            {!showConfigForm && (
+              <Button onClick={() => setShowConfigForm(true)}>Add Provider</Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {showConfigForm && (
+            <div className="mb-6">
+              <AIConfigForm
+                onSubmit={handleCreateAIConfig}
+                onCancel={() => setShowConfigForm(false)}
+                isLoading={isSavingConfig}
+              />
+            </div>
+          )}
+
+          {isLoadingConfigs ? (
+            <p className="text-sm text-muted-foreground">Loading configurations...</p>
+          ) : aiConfigs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No AI providers configured yet. Add one above.</p>
+          ) : (
+            <div className="space-y-4">
+              {aiConfigs.map((config) => (
+                <AIConfigCard
+                  key={config.id}
+                  config={config}
+                  onSetDefault={handleSetDefaultAIConfig}
+                  onDelete={handleDeleteAIConfig}
+                  onTest={handleTestAIConfig}
+                />
               ))}
             </div>
           )}

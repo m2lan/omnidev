@@ -19,12 +19,21 @@ import (
 	"github.com/omnidev/gateway/internal/repository"
 )
 
+// UserAIConfigRepository defines the interface for fetching user AI configs.
+type UserAIConfigRepository interface {
+	GetByUserAndProvider(ctx context.Context, userID uuid.UUID, provider string) (*adapter.UserAIConfig, error)
+	ListByUserID(ctx context.Context, userID uuid.UUID) ([]*adapter.UserAIConfig, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*adapter.UserAIConfig, error)
+}
+
 // ChatService handles chat operations.
 type ChatService struct {
 	convRepo      repository.ConversationRepository
 	msgRepo       repository.MessageRepository
 	modelRepo     repository.ModelRepository
 	adapters      *adapter.Registry
+	adapterFactory *adapter.Factory
+	userConfigRepo UserAIConfigRepository
 	cache         *cache.Redis
 	defaultModel  string
 }
@@ -35,16 +44,20 @@ func NewChatService(
 	msgRepo repository.MessageRepository,
 	modelRepo repository.ModelRepository,
 	adapters *adapter.Registry,
+	adapterFactory *adapter.Factory,
+	userConfigRepo UserAIConfigRepository,
 	cache *cache.Redis,
 	defaultModel string,
 ) *ChatService {
 	return &ChatService{
-		convRepo:     convRepo,
-		msgRepo:      msgRepo,
-		modelRepo:    modelRepo,
-		adapters:     adapters,
-		cache:        cache,
-		defaultModel: defaultModel,
+		convRepo:       convRepo,
+		msgRepo:        msgRepo,
+		modelRepo:      modelRepo,
+		adapters:       adapters,
+		adapterFactory: adapterFactory,
+		userConfigRepo: userConfigRepo,
+		cache:          cache,
+		defaultModel:   defaultModel,
 	}
 }
 
@@ -261,8 +274,8 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 		})
 	}
 
-	// Get adapter
-	aiAdapter, err := s.adapters.GetForModel(modelID)
+	// Get adapter (user config first, then global)
+	aiAdapter, err := s.resolveAdapter(ctx, userID, modelID)
 	if err != nil {
 		return nil, nil, appErr.Validation("unsupported model: " + modelID)
 	}
@@ -361,7 +374,7 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		})
 	}
 
-	aiAdapter, err := s.adapters.GetForModel(modelID)
+	aiAdapter, err := s.resolveAdapter(ctx, userID, modelID)
 	if err != nil {
 		return nil, nil, appErr.Validation("unsupported model: " + modelID)
 	}
@@ -449,6 +462,94 @@ func (s *ChatService) ListAvailableModels() []map[string]interface{} {
 		}
 	}
 	return models
+}
+
+// ListAvailableModelsForUser returns models from global adapters and user configs.
+func (s *ChatService) ListAvailableModelsForUser(ctx context.Context, userID uuid.UUID) []map[string]interface{} {
+	var models []map[string]interface{}
+	id := 0
+	seen := make(map[string]bool)
+
+	// Add user config models first (higher priority)
+	if s.userConfigRepo != nil {
+		userConfigs, err := s.userConfigRepo.ListByUserID(ctx, userID)
+		if err == nil {
+			for _, cfg := range userConfigs {
+				if cfg.Provider == "" {
+					continue
+				}
+				for _, modelID := range cfg.Models {
+					key := cfg.Provider + ":" + modelID
+					if seen[key] {
+						continue
+					}
+					seen[key] = true
+					id++
+					models = append(models, map[string]interface{}{
+						"id":           fmt.Sprintf("%d", id),
+						"provider":     cfg.Provider,
+						"model_id":     modelID,
+						"display_name": modelID,
+						"source":       "user",
+					})
+				}
+			}
+		}
+	}
+
+	// Add global adapter models (fallback)
+	for _, provider := range s.adapters.Providers() {
+		adp, err := s.adapters.Get(provider)
+		if err != nil {
+			continue
+		}
+		for _, modelID := range adp.Models() {
+			key := provider + ":" + modelID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			id++
+			models = append(models, map[string]interface{}{
+				"id":           fmt.Sprintf("%d", id),
+				"provider":     provider,
+				"model_id":     modelID,
+				"display_name": modelID,
+				"source":       "global",
+			})
+		}
+	}
+
+	return models
+}
+
+// resolveAdapter resolves an adapter for a model, checking user configs first.
+func (s *ChatService) resolveAdapter(ctx context.Context, userID uuid.UUID, modelID string) (adapter.Adapter, error) {
+	// Try to find a user config that has this model
+	if s.userConfigRepo != nil && s.adapterFactory != nil {
+		userConfigs, err := s.userConfigRepo.ListByUserID(ctx, userID)
+		if err == nil {
+			for _, cfg := range userConfigs {
+				for _, m := range cfg.Models {
+					if m == modelID {
+						// Found user config with this model, create adapter
+						adp, err := s.adapterFactory.CreateAdapter(cfg)
+						if err != nil {
+							logger.Log.Warn("Failed to create adapter from user config",
+								zap.String("provider", cfg.Provider),
+								zap.Error(err),
+							)
+							continue
+						}
+						return adp, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback to global registry
+	return s.adapters.GetForModel(modelID)
 }
 
 // emitUsageEvent publishes a usage event for billing.

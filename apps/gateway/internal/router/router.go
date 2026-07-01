@@ -17,6 +17,7 @@ func Setup(
 	healthHandler *handler.HealthHandler,
 	authHandler *handler.AuthHandler,
 	chatHandler *handler.ChatHandler,
+	userAIConfigHandler *handler.UserAIConfigProxyHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -65,6 +66,18 @@ func Setup(
 
 			// Models
 			protected.GET("/models", chatHandler.ListModels)
+
+			// User AI Configs
+			aiConfigs := protected.Group("/user/ai-configs")
+			{
+				aiConfigs.POST("", userAIConfigHandler.Create)
+				aiConfigs.GET("", userAIConfigHandler.List)
+				aiConfigs.GET("/:id", userAIConfigHandler.Get)
+				aiConfigs.PUT("/:id", userAIConfigHandler.Update)
+				aiConfigs.DELETE("/:id", userAIConfigHandler.Delete)
+				aiConfigs.PUT("/:id/default", userAIConfigHandler.SetDefault)
+				aiConfigs.POST("/:id/test", userAIConfigHandler.TestConnection)
+			}
 
 			// Prompts
 			prompts := protected.Group("/prompts")

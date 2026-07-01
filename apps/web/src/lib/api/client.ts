@@ -321,7 +321,39 @@ class ApiClient {
     return this.get<ApiResponse<Model[]>>("/api/v1/models");
   }
 
+  // User AI Configs
+  async listAIConfigs() {
+    return this.get<ApiResponse<UserAIConfig[]>>("/api/v1/user/ai-configs");
+  }
+
+  async getAIConfig(id: string) {
+    return this.get<ApiResponse<UserAIConfig>>(`/api/v1/user/ai-configs/${id}`);
+  }
+
+  async createAIConfig(data: CreateAIConfigInput) {
+    return this.post<ApiResponse<UserAIConfig>>("/api/v1/user/ai-configs", data);
+  }
+
+  async updateAIConfig(id: string, data: UpdateAIConfigInput) {
+    return this.put<ApiResponse<UserAIConfig>>(`/api/v1/user/ai-configs/${id}`, data);
+  }
+
+  async deleteAIConfig(id: string) {
+    return this.delete<ApiResponse<{ message: string }>>(`/api/v1/user/ai-configs/${id}`);
+  }
+
+  async setDefaultAIConfig(id: string) {
+    return this.put<ApiResponse<{ message: string }>>(`/api/v1/user/ai-configs/${id}/default`, {});
+  }
+
+  async testAIConfigConnection(id: string) {
+    return this.post<ApiResponse<TestConnectionResult>>(`/api/v1/user/ai-configs/${id}/test`, {});
+  }
+
   // Helpers
+  private put<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: "PUT", body });
+  }
   private get<T>(path: string): Promise<T> {
     return this.request<T>(path, { method: "GET" });
   }
@@ -492,6 +524,55 @@ export interface CreateAPIKeyInput {
   name: string;
   scopes?: string[];
   expires_at?: string;
+}
+
+export interface ModelConfig {
+  id: string;
+  display_name: string;
+  default_temperature?: number;
+  default_max_tokens?: number;
+  context_window?: number;
+}
+
+export interface UserAIConfig {
+  id: string;
+  user_id: string;
+  provider: string;
+  display_name: string;
+  api_key_mask: string;
+  base_url: string;
+  protocol: "openai" | "anthropic";
+  models: ModelConfig[];
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAIConfigInput {
+  provider: string;
+  display_name: string;
+  api_key: string;
+  base_url: string;
+  protocol: "openai" | "anthropic";
+  models: ModelConfig[];
+  is_default?: boolean;
+}
+
+export interface UpdateAIConfigInput {
+  display_name?: string;
+  api_key?: string;
+  base_url?: string;
+  protocol?: "openai" | "anthropic";
+  models?: ModelConfig[];
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  latency_ms: number;
 }
 
 export const api = new ApiClient(API_BASE);
