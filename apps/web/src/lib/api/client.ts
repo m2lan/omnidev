@@ -9,14 +9,19 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 class ApiClient {
   private baseUrl: string;
   private accessToken: string | null = null;
+  private refreshTokenPromise: Promise<string> | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+  }
 
-    // Load token from localStorage on client side
+  // Lazy getter: always read from localStorage to handle page refresh
+  private getToken(): string | null {
+    if (this.accessToken) return this.accessToken;
     if (typeof window !== "undefined") {
       this.accessToken = localStorage.getItem("access_token");
     }
+    return this.accessToken;
   }
 
   setAccessToken(token: string | null) {
@@ -31,7 +36,46 @@ class ApiClient {
   }
 
   getAccessToken(): string | null {
-    return this.accessToken;
+    return this.getToken();
+  }
+
+  // Refresh access token using refresh token
+  private async refreshAccessToken(): Promise<string> {
+    // Deduplicate concurrent refresh calls
+    if (this.refreshTokenPromise) {
+      return this.refreshTokenPromise;
+    }
+
+    this.refreshTokenPromise = (async () => {
+      const refreshToken = localStorage.getItem("refresh_token");
+      if (!refreshToken) {
+        throw new Error("No refresh token available");
+      }
+
+      const response = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!response.ok) {
+        // Refresh failed - clear everything
+        this.setAccessToken(null);
+        localStorage.removeItem("refresh_token");
+        throw new Error("Token refresh failed");
+      }
+
+      const { data } = await response.json();
+      this.setAccessToken(data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      return data.access_token;
+    })();
+
+    try {
+      return await this.refreshTokenPromise;
+    } finally {
+      this.refreshTokenPromise = null;
+    }
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -42,15 +86,34 @@ class ApiClient {
       ...(customHeaders as Record<string, string>),
     };
 
-    if (this.accessToken) {
-      headers["Authorization"] = `Bearer ${this.accessToken}`;
+    const token = this.getToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...rest,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const doFetch = async (): Promise<Response> => {
+      return fetch(`${this.baseUrl}${path}`, {
+        ...rest,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    };
+
+    let response = await doFetch();
+
+    // If 401 and we have a token, try refreshing
+    if (response.status === 401 && token) {
+      try {
+        const newToken = await this.refreshAccessToken();
+        headers["Authorization"] = `Bearer ${newToken}`;
+        response = await doFetch();
+      } catch {
+        // Refresh failed, redirect to login
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      }
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({
@@ -88,6 +151,19 @@ class ApiClient {
 
   async updateProfile(data: UpdateProfileInput) {
     return this.patch<ApiResponse<User>>("/api/v1/users/me", data);
+  }
+
+  // API Keys
+  async listAPIKeys() {
+    return this.get<ApiResponse<APIKey[]>>("/api/v1/users/me/api-keys");
+  }
+
+  async createAPIKey(data: CreateAPIKeyInput) {
+    return this.post<ApiResponse<{ api_key: APIKey; key: string }>>("/api/v1/users/me/api-keys", data);
+  }
+
+  async revokeAPIKey(id: string) {
+    return this.delete<ApiResponse<void>>(`/api/v1/users/me/api-keys/${id}`);
   }
 
   // Conversations
@@ -307,6 +383,21 @@ export interface CreateKBInput {
   description?: string;
   chunk_size?: number;
   chunk_overlap?: number;
+}
+
+export interface APIKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  created_at: string;
+  expires_at?: string;
+}
+
+export interface CreateAPIKeyInput {
+  name: string;
+  scopes?: string[];
+  expires_at?: string;
 }
 
 export const api = new ApiClient(API_BASE);

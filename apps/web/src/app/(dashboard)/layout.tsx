@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuthStore } from "@/stores/auth-store";
@@ -24,7 +25,24 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const router = useRouter();
+  const { user, isAuthenticated, logout, fetchProfile } = useAuthStore();
+
+  // Check auth on mount and fetch profile if needed
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    // If we have a token but no user, fetch profile
+    if (!user) {
+      fetchProfile().catch(() => {
+        router.push("/login");
+      });
+    }
+  }, [user, router, fetchProfile]);
 
   return (
     <div className="flex h-screen bg-background">

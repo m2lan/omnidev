@@ -1,28 +1,102 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
+import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
+interface APIKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  created_at: string;
+  expires_at?: string;
+}
+
 export default function SettingsPage() {
-  const { user, logout } = useAuthStore();
+  const router = useRouter();
+  const { user, logout, fetchProfile } = useAuthStore();
   const [nickname, setNickname] = useState(user?.nickname || "");
-  const [email, setEmail] = useState(user?.email || "");
   const [bio, setBio] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+
+  // Fetch API keys on mount
+  useEffect(() => {
+    loadAPIKeys();
+  }, []);
+
+  // Update local state when user changes
+  useEffect(() => {
+    if (user) {
+      setNickname(user.nickname || "");
+    }
+  }, [user]);
+
+  const loadAPIKeys = async () => {
+    try {
+      setIsLoadingKeys(true);
+      const { data } = await api.listAPIKeys();
+      setApiKeys(data || []);
+    } catch (error) {
+      console.error("Failed to load API keys:", error);
+    } finally {
+      setIsLoadingKeys(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Simulate save
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await api.updateProfile({ nickname, bio });
+      await fetchProfile();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save profile:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateKey = async () => {
+    if (!newKeyName.trim()) return;
+    setIsCreatingKey(true);
+    try {
+      const { data } = await api.createAPIKey({ name: newKeyName });
+      setCreatedKey(data.key);
+      setNewKeyName("");
+      await loadAPIKeys();
+    } catch (error) {
+      console.error("Failed to create API key:", error);
+    } finally {
+      setIsCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (keyId: string) => {
+    try {
+      await api.revokeAPIKey(keyId);
+      await loadAPIKeys();
+    } catch (error) {
+      console.error("Failed to revoke API key:", error);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
   };
 
   return (
@@ -56,7 +130,7 @@ export default function SettingsPage() {
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" value={user?.email || ""} disabled />
           </div>
 
           <div className="space-y-2">
@@ -79,21 +153,47 @@ export default function SettingsPage() {
           <CardDescription>Manage your API keys for programmatic access</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between p-3 border rounded-lg mb-3">
-            <div>
-              <p className="text-sm font-medium">Production Key</p>
-              <p className="text-xs text-muted-foreground font-mono">sk-prod-xxxx...xxxx</p>
+          {createdKey && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm font-medium text-green-800">API Key Created!</p>
+              <p className="text-xs text-green-600 font-mono mt-1 break-all">{createdKey}</p>
+              <p className="text-xs text-green-600 mt-1">Copy this key now - it won't be shown again.</p>
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => setCreatedKey(null)}>
+                Dismiss
+              </Button>
             </div>
-            <Button variant="outline" size="sm">Revoke</Button>
+          )}
+
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Key name (e.g., Production)"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+            />
+            <Button onClick={handleCreateKey} disabled={isCreatingKey || !newKeyName.trim()}>
+              {isCreatingKey ? "Creating..." : "Create Key"}
+            </Button>
           </div>
-          <div className="flex items-center justify-between p-3 border rounded-lg mb-3">
-            <div>
-              <p className="text-sm font-medium">Development Key</p>
-              <p className="text-xs text-muted-foreground font-mono">sk-dev-xxxx...xxxx</p>
+
+          {isLoadingKeys ? (
+            <p className="text-sm text-muted-foreground">Loading keys...</p>
+          ) : apiKeys.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No API keys yet. Create one above.</p>
+          ) : (
+            <div className="space-y-2">
+              {apiKeys.map((key) => (
+                <div key={key.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium">{key.name}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{key.key_prefix}</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => handleRevokeKey(key.id)}>
+                    Revoke
+                  </Button>
+                </div>
+              ))}
             </div>
-            <Button variant="outline" size="sm">Revoke</Button>
-          </div>
-          <Button variant="outline">+ Create New Key</Button>
+          )}
         </CardContent>
       </Card>
 
@@ -152,14 +252,14 @@ export default function SettingsPage() {
               <p className="text-sm font-medium">Sign out</p>
               <p className="text-xs text-muted-foreground">Sign out from this device</p>
             </div>
-            <Button variant="outline" onClick={logout}>Sign Out</Button>
+            <Button variant="outline" onClick={handleLogout}>Sign Out</Button>
           </div>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Delete account</p>
               <p className="text-xs text-muted-foreground">Permanently delete your account and all data</p>
             </div>
-            <Button variant="destructive">Delete Account</Button>
+            <Button variant="destructive" disabled>Delete Account</Button>
           </div>
         </CardContent>
       </Card>

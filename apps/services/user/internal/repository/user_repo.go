@@ -61,7 +61,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
 	query := `
 		SELECT id, email, email_verified, password_hash, nickname, avatar_url, bio,
-		       role, status, last_login_at, last_login_ip, settings, metadata,
+		       role, status, last_login_at, last_login_ip::text, settings, metadata,
 		       created_at, updated_at, deleted_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL`
@@ -87,7 +87,7 @@ func (r *userRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Use
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `
 		SELECT id, email, email_verified, password_hash, nickname, avatar_url, bio,
-		       role, status, last_login_at, last_login_ip, settings, metadata,
+		       role, status, last_login_at, last_login_ip::text, settings, metadata,
 		       created_at, updated_at, deleted_at
 		FROM users
 		WHERE email = $1 AND deleted_at IS NULL`
@@ -157,7 +157,7 @@ func (r *userRepository) Update(ctx context.Context, id uuid.UUID, update *domai
 }
 
 func (r *userRepository) UpdateLastLogin(ctx context.Context, id uuid.UUID, ip string) error {
-	query := `UPDATE users SET last_login_at = $1, last_login_ip = $2 WHERE id = $1`
+	query := `UPDATE users SET last_login_at = $1, last_login_ip = $2 WHERE id = $3`
 	_, err := r.pool.Exec(ctx, query, time.Now(), ip, id)
 	if err != nil {
 		return fmt.Errorf("failed to update last login: %w", err)
@@ -224,7 +224,7 @@ func (r *userRepository) List(ctx context.Context, filter *domain.UserFilter, of
 	// Fetch page
 	query := fmt.Sprintf(`
 		SELECT id, email, email_verified, password_hash, nickname, avatar_url, bio,
-		       role, status, last_login_at, last_login_ip, settings, metadata,
+		       role, status, last_login_at, last_login_ip::text, settings, metadata,
 		       created_at, updated_at, deleted_at
 		FROM users
 		WHERE %s
