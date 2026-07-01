@@ -117,7 +117,7 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 	r.Use(middleware.Recovery())
-	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:8080"}))
+	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:9090"}))
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {

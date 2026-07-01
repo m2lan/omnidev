@@ -93,7 +93,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Logger(), middleware.Recovery())
-	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:8080"}))
+	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:9090"}))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "notification"})

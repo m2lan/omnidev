@@ -42,6 +42,6 @@ COPY --from=builder /app/gateway /app/gateway
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 9090
 
 ENTRYPOINT ["/app/gateway"]

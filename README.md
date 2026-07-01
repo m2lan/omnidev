@@ -69,9 +69,9 @@ make web-dev
 | Service | URL |
 |---------|-----|
 | Web App | http://localhost:3000 |
-| API Gateway | http://localhost:8080 |
-| Health Check | http://localhost:8080/health |
-| API Info | http://localhost:8080/info |
+| API Gateway | http://localhost:9090 |
+| Health Check | http://localhost:9090/health |
+| API Info | http://localhost:9090/info |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
 | Kafka | localhost:9092 |
@@ -79,7 +79,7 @@ make web-dev
 | Elasticsearch | http://localhost:9200 |
 | Temporal UI | http://localhost:8088 |
 | Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
+| Prometheus | http://localhost:9091 |
 
 ## Project Structure
 
@@ -203,10 +203,10 @@ The API follows RESTful conventions. All response formats:
 
 ```bash
 # Bearer Token
-curl -H "Authorization: Bearer <token>" http://localhost:8080/api/v1/users/me
+curl -H "Authorization: Bearer <token>" http://localhost:9090/api/v1/users/me
 
 # API Key
-curl -H "Authorization: Bearer <api-key>" http://localhost:8080/api/v1/users/me
+curl -H "Authorization: Bearer <api-key>" http://localhost:9090/api/v1/users/me
 ```
 
 ## Troubleshooting
@@ -235,9 +235,9 @@ docker compose -f deploy/docker/docker-compose.infra.yml exec redis redis-cli pi
 
 ```bash
 # Find process using the port
-netstat -ano | findstr :8080
+netstat -ano | findstr :9090
 # or
-lsof -i :8080
+lsof -i :9090
 
 # Kill process
 taskkill /PID <pid> /F

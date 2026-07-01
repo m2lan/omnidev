@@ -258,6 +258,23 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
                         </div>
                         {isHtml && activeTab === 'preview' ? (
                           <HtmlPreview html={htmlContent} />
+                        ) : isHtml ? (
+                          // Lightweight pre for HTML code view (SyntaxHighlighter is too slow for large HTML)
+                          <pre
+                            style={{
+                              margin: 0,
+                              borderRadius: "0.5rem",
+                              padding: "2.5rem 1rem 1rem",
+                              fontSize: "0.85rem",
+                              wordBreak: "break-all",
+                              whiteSpace: "pre-wrap",
+                              maxWidth: "100%",
+                              overflow: "hidden",
+                              backgroundColor: "#282c34",
+                              color: "#abb2bf",
+                              fontFamily: "var(--mono, monospace)",
+                            }}
+                          >{htmlContent}</pre>
                         ) : (
                           <SyntaxHighlighter
                             language={language || "text"}

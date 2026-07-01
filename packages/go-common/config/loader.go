@@ -18,7 +18,7 @@ func Load() (*Config, error) {
 	v.SetDefault("app.name", "omnidev")
 	v.SetDefault("app.env", "development")
 	v.SetDefault("app.debug", true)
-	v.SetDefault("app.port", 8080)
+	v.SetDefault("app.port", 9090)
 	v.SetDefault("app.log_level", "debug")
 
 	v.SetDefault("db.host", "localhost")

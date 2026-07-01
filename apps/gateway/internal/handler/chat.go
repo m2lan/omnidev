@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -278,10 +279,29 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 	c.Writer.Flush()
 
 	// Stream AI response
+	var fullContent string
 	for chunk := range stream {
-		data, _ := json.Marshal(chunk)
-		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-		c.Writer.Flush()
+		if chunk.FinishReason == "stop" {
+			// Send complete assistant message
+			completeMsg := map[string]interface{}{
+				"id":              chunk.ID,
+				"conversation_id": convID.String(),
+				"role":            "assistant",
+				"content":         fullContent,
+				"model_id":        chunk.ModelID,
+				"token_input":     chunk.TokenInput,
+				"token_output":    chunk.TokenOutput,
+				"created_at":      time.Now().UTC().Format(time.RFC3339Nano),
+			}
+			msgData, _ := json.Marshal(completeMsg)
+			fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", msgData)
+			c.Writer.Flush()
+		} else {
+			fullContent += chunk.Delta
+			data, _ := json.Marshal(chunk)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+			c.Writer.Flush()
+		}
 	}
 
 	// Send done event

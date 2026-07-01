@@ -1,6 +1,6 @@
 // API Client for OmniDev Platform
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9090";
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
@@ -256,10 +256,10 @@ class ApiClient {
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
+        let currentEvent = "";
         for (const line of lines) {
           if (line.startsWith("event: ")) {
-            // Parse SSE event type
-            const eventType = line.slice(7).trim();
+            currentEvent = line.slice(7).trim();
             continue;
           }
           if (line.startsWith("data: ")) {
@@ -269,26 +269,37 @@ class ApiClient {
             try {
               const parsed = JSON.parse(data);
 
+              // Complete message from gateway
+              if (currentEvent === "complete") {
+                onComplete(parsed);
+                currentEvent = "";
+                continue;
+              }
+
               // Check for user_message event
               if (parsed.id && parsed.role === "user") {
                 onUserMessage(parsed);
+                currentEvent = "";
                 continue;
               }
 
               // Check for delta content
               if (parsed.delta) {
                 onChunk(parsed.delta);
+                currentEvent = "";
                 continue;
               }
 
-              // Check for complete message
+              // Check for complete message (fallback)
               if (parsed.id && parsed.role === "assistant") {
                 onComplete(parsed);
+                currentEvent = "";
                 continue;
               }
             } catch {
               // Ignore parse errors
             }
+            currentEvent = "";
           }
         }
       }

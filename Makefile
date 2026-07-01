@@ -58,7 +58,7 @@ dev-infra-clean: ## Stop and remove infrastructure volumes
 dev: dev-infra ## Start full development environment
 	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE_DEV) up -d
 	@echo "Development environment is ready!"
-	@echo "  Gateway:    http://localhost:8080"
+	@echo "  Gateway:    http://localhost:9090"
 	@echo "  Web:        http://localhost:3000"
 	@echo "  PostgreSQL: localhost:5432"
 	@echo "  Redis:      localhost:6379"
@@ -67,7 +67,7 @@ dev: dev-infra ## Start full development environment
 	@echo "  ES:         http://localhost:9200"
 	@echo "  Temporal:   http://localhost:8088"
 	@echo "  Grafana:    http://localhost:3001"
-	@echo "  Prometheus: http://localhost:9090"
+	@echo "  Prometheus: http://localhost:9091"
 
 .PHONY: dev-down
 dev-down: ## Stop full development environment

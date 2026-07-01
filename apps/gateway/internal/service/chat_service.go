@@ -424,11 +424,19 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 				}
 				_ = s.msgRepo.Create(ctx, assistantMsg)
 				_ = s.convRepo.IncrementMessageCount(ctx, convID)
-				_ = s.convRepo.IncrementMessageCount(ctx, convID)
 
 				if conv.Title == nil || *conv.Title == "" {
 					title := generateTitle(input.Content)
 					_ = s.convRepo.Update(ctx, convID, &repository.ConversationUpdate{Title: &title})
+				}
+
+				// Send completion event with full message
+				ch <- domain.ChatChunk{
+					ID:           assistantMsg.ID.String(),
+					FinishReason: "stop",
+					TokenInput:   inputTokens,
+					TokenOutput:  outputTokens,
+					ModelID:      modelID,
 				}
 			}
 		}
