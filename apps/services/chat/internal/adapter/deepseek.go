@@ -42,7 +42,7 @@ func NewDeepSeekAdapter(cfg config.AIProviderConfig) *DeepSeekAdapter {
 		baseURL: baseURL,
 		models:  models,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 10 * time.Minute, // Long timeout for streaming
 		},
 	}
 }
@@ -101,9 +101,14 @@ func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 		return nil, fmt.Errorf("no choices in response")
 	}
 
+	// Use content if available, fallback to reasoning_content
+	content := result.Choices[0].Message.Content
+	if content == "" {
+		content = result.Choices[0].Message.ReasoningContent
+	}
 	return &ChatResponse{
 		ID:      result.ID,
-		Content: result.Choices[0].Message.Content,
+		Content: content,
 		Model:   result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,

@@ -394,12 +394,18 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 			if chunk.Finish == "stop" {
 				latency := int(time.Since(start).Milliseconds())
 
+				// Estimate token counts (rough: ~4 chars per token for English, ~2 for Chinese)
+				inputTokens := estimateTokens(adapterMsgs)
+				outputTokens := estimateTokensString(fullContent)
+
 				// Save complete assistant message
 				assistantMsg := &domain.Message{
 					ID:             uuid.New(),
 					ConversationID: convID,
 					Role:           domain.MessageRoleAssistant,
 					Content:        fullContent,
+					TokenInput:     &inputTokens,
+					TokenOutput:    &outputTokens,
 					LatencyMs:      &latency,
 					Metadata:       map[string]interface{}{"model": modelID, "streamed": true},
 				}
@@ -464,4 +470,19 @@ func generateTitle(content string) string {
 		return content[:50] + "..."
 	}
 	return content
+}
+
+// estimateTokens estimates token count from adapter messages.
+func estimateTokens(msgs []adapter.Message) int {
+	total := 0
+	for _, msg := range msgs {
+		total += len(msg.Content) + len(msg.Role) + 4 // overhead
+	}
+	// Rough: ~4 chars per token
+	return total / 4
+}
+
+// estimateTokensString estimates token count from a string.
+func estimateTokensString(content string) int {
+	return len(content) / 4
 }

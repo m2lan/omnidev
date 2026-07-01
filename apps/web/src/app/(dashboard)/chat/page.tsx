@@ -49,10 +49,10 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full min-h-0">
       {/* Conversation List */}
-      <div className="w-72 border-r flex flex-col">
-        <div className="p-3 border-b">
+      <div className="w-72 border-r flex flex-col min-h-0">
+        <div className="p-3 border-b shrink-0">
           <Button onClick={handleNewChat} className="w-full" variant="outline">
             + New Chat
           </Button>
@@ -67,7 +67,7 @@ export default function ChatPage() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         <ChatArea
           messages={messages}
           isSending={isSending}

@@ -1,6 +1,30 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, fetchProfile } = useAuthStore();
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (token && !isAuthenticated) {
+      fetchProfile().catch(() => {});
+    }
+  }, [isAuthenticated, fetchProfile]);
+
+  const handleGetStarted = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      router.push("/chat");
+    } else {
+      router.push("/register");
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-background to-muted/50">
       <div className="container flex flex-col items-center gap-8 text-center">
@@ -43,18 +67,21 @@ export default function Home() {
 
         {/* CTA */}
         <div className="flex gap-4">
-          <Link
-            href="/register"
+          <a
+            href="#"
+            onClick={handleGetStarted}
             className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-8 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
           >
-            Get Started
-          </Link>
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-8 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            Sign In
-          </Link>
+            {isAuthenticated ? "Go to Chat" : "Get Started"}
+          </a>
+          {!isAuthenticated && (
+            <Link
+              href="/login"
+              className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-8 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
 
         {/* Tech Stack */}

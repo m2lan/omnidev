@@ -45,10 +45,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </Avatar>
 
       {/* Content */}
-      <div className={cn("flex-1 min-w-0", isUser ? "text-right" : "")}>
+      <div className={cn("flex-1 min-w-0 overflow-hidden", isUser ? "flex justify-end" : "")}>
         <div
           className={cn(
-            "inline-block rounded-lg px-4 py-2.5 max-w-full",
+            "rounded-lg px-4 py-2.5 max-w-[85%] overflow-hidden break-words",
             isUser
               ? "bg-primary text-primary-foreground"
               : "bg-muted"
@@ -57,7 +57,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="markdown-body text-sm">
+            <div className="markdown-body text-sm overflow-hidden">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{

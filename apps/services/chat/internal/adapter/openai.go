@@ -48,7 +48,7 @@ func NewOpenAIAdapter(cfg config.AIProviderConfig) *OpenAIAdapter {
 		baseURL: baseURL,
 		models:  models,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 10 * time.Minute, // Long timeout for streaming
 		},
 	}
 }
@@ -98,9 +98,14 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 	}
 
 	choice := result.Choices[0]
+	// Use content if available, fallback to reasoning_content (mimo)
+	content := choice.Message.Content
+	if content == "" {
+		content = choice.Message.ReasoningContent
+	}
 	return &ChatResponse{
 		ID:      result.ID,
-		Content: choice.Message.Content,
+		Content: content,
 		Model:   result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
@@ -166,9 +171,14 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 
 			if len(chunk.Choices) > 0 {
 				delta := chunk.Choices[0].Delta
+				// Use content if available, fallback to reasoning_content (mimo)
+				content := delta.Content
+				if content == "" {
+					content = delta.ReasoningContent
+				}
 				ch <- ChatStreamChunk{
 					ID:     chunk.ID,
-					Delta:  delta.Content,
+					Delta:  content,
 					Model:  chunk.Model,
 					Finish: chunk.Choices[0].FinishReason,
 				}
@@ -259,8 +269,9 @@ type openaiResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
-			Content   string     `json:"content"`
-			ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+			Content          string     `json:"content"`
+			ReasoningContent string     `json:"reasoning_content"`
+			ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -276,7 +287,8 @@ type openaiStreamChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`

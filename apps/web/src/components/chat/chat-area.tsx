@@ -97,7 +97,7 @@ export function ChatArea({
 
         {/* Input */}
         <div className="border-t p-4">
-          <div className="max-w-3xl mx-auto">
+          <div className="w-full mx-auto">
             <ModelSelector value={selectedModel} onChange={onModelChange} />
             <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
               <textarea
@@ -121,10 +121,10 @@ export function ChatArea({
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Messages */}
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-3xl mx-auto py-6">
+      <div className="flex-1 overflow-y-auto">
+        <div className="w-full mx-auto py-6 px-4">
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
@@ -165,7 +165,7 @@ export function ChatArea({
       {/* Error banner */}
       {error && (
         <div className="border-t border-destructive/50 bg-destructive/10 px-4 py-3">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="w-full mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-destructive">
               <span>⚠️</span>
               <span>{error}</span>
@@ -182,7 +182,7 @@ export function ChatArea({
 
       {/* Input */}
       <div className="border-t p-4">
-        <div className="max-w-3xl mx-auto">
+        <div className="w-full mx-auto">
           <ModelSelector value={selectedModel} onChange={onModelChange} />
           <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
             <textarea

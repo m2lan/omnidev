@@ -35,7 +35,7 @@ func NewAnthropicAdapter(cfg config.AIProviderConfig) *AnthropicAdapter {
 		apiKey:  cfg.APIKey,
 		baseURL: baseURL,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 10 * time.Minute, // Long timeout for streaming
 		},
 	}
 }

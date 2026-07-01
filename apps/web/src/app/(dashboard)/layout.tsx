@@ -26,7 +26,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout, fetchProfile } = useAuthStore();
+  const { user, logout, fetchProfile } = useAuthStore();
 
   // Check auth on mount and fetch profile if needed
   useEffect(() => {
