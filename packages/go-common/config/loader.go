@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,6 +60,8 @@ func Load() (*Config, error) {
 	v.SetDefault("jwt.refresh_expiry", "168h")
 	v.SetDefault("jwt.issuer", "omnidev")
 
+	v.SetDefault("ai.default_model", "deepseek-chat")
+
 	v.SetDefault("sandbox.runtime_image", "omnidev/sandbox:latest")
 	v.SetDefault("sandbox.cpu_limit", "2")
 	v.SetDefault("sandbox.memory_limit", "2Gi")
@@ -77,8 +81,12 @@ func Load() (*Config, error) {
 	v.SetConfigName(".env")
 	v.SetConfigType("env")
 	v.AddConfigPath(".")
-	v.AddConfigPath("../../")
-	_ = v.ReadInConfig() //nolint:errcheck // config file is optional
+	v.AddConfigPath(findProjectRoot())
+	if err := v.ReadInConfig(); err == nil {
+		// .env keys like DEEPSEEK_API_KEY are read as-is, not mapped to ai.deepseek.api_key.
+		// Copy raw .env keys to their mapped config paths.
+		applyEnvFileOverrides(v)
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -145,6 +153,7 @@ func bindEnvVars(v *viper.Viper) {
 		"OPENAI_BASE_URL":     "ai.openai.base_url",
 		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
 		"GOOGLE_API_KEY":      "ai.google.api_key",
+		"AI_DEFAULT_MODEL":    "ai.default_model",
 		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
 		"QWEN_API_KEY":        "ai.qwen.api_key",
 		"OLLAMA_BASE_URL":     "ai.ollama.base_url",
@@ -159,4 +168,77 @@ func bindEnvVars(v *viper.Viper) {
 	for env, key := range envMap {
 		_ = v.BindEnv(key, env) //nolint:errcheck
 	}
+}
+
+// applyEnvFileOverrides copies raw .env file keys (e.g., DEEPSEEK_API_KEY) to their
+// mapped config paths (e.g., ai.deepseek.api_key) so Unmarshal can find them.
+func applyEnvFileOverrides(v *viper.Viper) {
+	envMap := map[string]string{
+		"APP_ENV":             "app.env",
+		"APP_DEBUG":           "app.debug",
+		"APP_PORT":            "app.port",
+		"APP_LOG_LEVEL":       "app.log_level",
+		"DB_HOST":             "db.host",
+		"DB_PORT":             "db.port",
+		"DB_USER":             "db.user",
+		"DB_PASSWORD":         "db.password",
+		"DB_NAME":             "db.name",
+		"DB_SSLMODE":          "db.sslmode",
+		"DB_MAX_OPEN_CONNS":   "db.max_open_conns",
+		"DB_MAX_IDLE_CONNS":   "db.max_idle_conns",
+		"DB_CONN_MAX_LIFETIME": "db.conn_max_lifetime",
+		"REDIS_HOST":          "redis.host",
+		"REDIS_PORT":          "redis.port",
+		"REDIS_PASSWORD":      "redis.password",
+		"REDIS_DB":            "redis.db",
+		"KAFKA_BROKERS":       "kafka.brokers",
+		"KAFKA_GROUP_ID":      "kafka.group_id",
+		"MINIO_ENDPOINT":      "minio.endpoint",
+		"MINIO_ACCESS_KEY":    "minio.access_key",
+		"MINIO_SECRET_KEY":    "minio.secret_key",
+		"MINIO_USE_SSL":       "minio.use_ssl",
+		"ES_URL":              "es.url",
+		"TEMPORAL_HOST":       "temporal.host",
+		"JWT_SECRET":          "jwt.secret",
+		"JWT_ACCESS_EXPIRY":   "jwt.access_expiry",
+		"JWT_REFRESH_EXPIRY":  "jwt.refresh_expiry",
+		"JWT_ISSUER":          "jwt.issuer",
+		"OPENAI_API_KEY":      "ai.openai.api_key",
+		"OPENAI_BASE_URL":     "ai.openai.base_url",
+		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
+		"GOOGLE_API_KEY":      "ai.google.api_key",
+		"AI_DEFAULT_MODEL":    "ai.default_model",
+		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
+		"QWEN_API_KEY":        "ai.qwen.api_key",
+		"OLLAMA_BASE_URL":     "ai.ollama.base_url",
+		"GITHUB_CLIENT_ID":    "oauth.github.client_id",
+		"GITHUB_CLIENT_SECRET": "oauth.github.client_secret",
+		"GITHUB_REDIRECT_URL": "oauth.github.redirect_url",
+		"GOOGLE_CLIENT_ID":    "oauth.google.client_id",
+		"GOOGLE_CLIENT_SECRET": "oauth.google.client_secret",
+		"GOOGLE_REDIRECT_URL": "oauth.google.redirect_url",
+	}
+
+	for envKey, cfgKey := range envMap {
+		if v.GetString(cfgKey) == "" && v.GetString(envKey) != "" {
+			v.Set(cfgKey, v.GetString(envKey))
+		}
+	}
+}
+
+// findProjectRoot walks up from the current working directory to find
+// a directory containing .env file.
+func findProjectRoot() string {
+	dir, _ := filepath.Abs(".")
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".env")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "."
 }

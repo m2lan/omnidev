@@ -21,11 +21,12 @@ import (
 
 // ChatService handles chat operations.
 type ChatService struct {
-	convRepo  repository.ConversationRepository
-	msgRepo   repository.MessageRepository
-	modelRepo repository.ModelRepository
-	adapters  *adapter.Registry
-	cache     *cache.Redis
+	convRepo      repository.ConversationRepository
+	msgRepo       repository.MessageRepository
+	modelRepo     repository.ModelRepository
+	adapters      *adapter.Registry
+	cache         *cache.Redis
+	defaultModel  string
 }
 
 // NewChatService creates a new chat service.
@@ -35,13 +36,15 @@ func NewChatService(
 	modelRepo repository.ModelRepository,
 	adapters *adapter.Registry,
 	cache *cache.Redis,
+	defaultModel string,
 ) *ChatService {
 	return &ChatService{
-		convRepo:  convRepo,
-		msgRepo:   msgRepo,
-		modelRepo: modelRepo,
-		adapters:  adapters,
-		cache:     cache,
+		convRepo:     convRepo,
+		msgRepo:      msgRepo,
+		modelRepo:    modelRepo,
+		adapters:     adapters,
+		cache:        cache,
+		defaultModel: defaultModel,
 	}
 }
 
@@ -222,7 +225,7 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 		modelID = conv.ModelID.String()
 	}
 	if modelID == "" {
-		modelID = "gpt-4o-mini" // default
+		modelID = s.defaultModel
 	}
 
 	// Save user message
@@ -323,7 +326,7 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		modelID = conv.ModelID.String()
 	}
 	if modelID == "" {
-		modelID = "gpt-4o-mini"
+		modelID = s.defaultModel
 	}
 
 	// Save user message

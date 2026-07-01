@@ -119,12 +119,13 @@ type OAuthProvider struct {
 
 // AIConfig holds AI provider settings.
 type AIConfig struct {
-	OpenAI    AIProviderConfig `mapstructure:"openai"`
-	Anthropic AIProviderConfig `mapstructure:"anthropic"`
-	Google    AIProviderConfig `mapstructure:"google"`
-	DeepSeek  AIProviderConfig `mapstructure:"deepseek"`
-	Qwen      AIProviderConfig `mapstructure:"qwen"`
-	Ollama    AIProviderConfig `mapstructure:"ollama"`
+	DefaultModel string             `mapstructure:"default_model"`
+	OpenAI       AIProviderConfig   `mapstructure:"openai"`
+	Anthropic    AIProviderConfig   `mapstructure:"anthropic"`
+	Google       AIProviderConfig   `mapstructure:"google"`
+	DeepSeek     AIProviderConfig   `mapstructure:"deepseek"`
+	Qwen         AIProviderConfig   `mapstructure:"qwen"`
+	Ollama       AIProviderConfig   `mapstructure:"ollama"`
 }
 
 // AIProviderConfig holds settings for a single AI provider.

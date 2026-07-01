@@ -105,7 +105,7 @@ func main() {
 	promptRepo := repository.NewPromptRepository(db.Pool)
 
 	// Services
-	chatSvc := service.NewChatService(convRepo, msgRepo, modelRepo, adapterRegistry, redisClient)
+	chatSvc := service.NewChatService(convRepo, msgRepo, modelRepo, adapterRegistry, redisClient, cfg.AI.DefaultModel)
 	promptSvc := service.NewPromptService(promptRepo)
 
 	// Handlers

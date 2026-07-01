@@ -109,7 +109,7 @@ func main() {
 	adapterRegistry.Register(adapter.NewOpenAIAdapter(cfg.AI.OpenAI))
 
 	// Initialize services
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, redisClient)
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, redisClient, cfg.AI.DefaultModel)
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)

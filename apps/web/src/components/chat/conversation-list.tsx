@@ -46,11 +46,19 @@ export function ConversationList({
     <div className="flex-1 overflow-auto p-2">
       <div className="space-y-1">
         {conversations.map((conv) => (
-          <button
+          <div
             key={conv.id}
+            role="button"
+            tabIndex={0}
             onClick={() => onSelect(conv.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect(conv.id);
+              }
+            }}
             className={cn(
-              "w-full text-left rounded-lg px-3 py-2.5 transition-colors group",
+              "w-full text-left rounded-lg px-3 py-2.5 transition-colors group cursor-pointer",
               activeId === conv.id
                 ? "bg-accent text-accent-foreground"
                 : "hover:bg-muted"
@@ -88,7 +96,7 @@ export function ConversationList({
                 ))}
               </div>
             )}
-          </button>
+          </div>
         ))}
       </div>
     </div>
