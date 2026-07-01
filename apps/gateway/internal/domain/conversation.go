@@ -70,7 +70,7 @@ type Message struct {
 	ConversationID uuid.UUID              `json:"conversation_id" db:"conversation_id"`
 	Role           MessageRole            `json:"role" db:"role"`
 	Content        string                 `json:"content" db:"content"`
-	ModelID        *uuid.UUID             `json:"model_id,omitempty" db:"model_id"`
+	ModelID        *string                `json:"model_id,omitempty" db:"model_id"`
 	TokenInput     *int                   `json:"token_input,omitempty" db:"token_input"`
 	TokenOutput    *int                   `json:"token_output,omitempty" db:"token_output"`
 	LatencyMs      *int                   `json:"latency_ms,omitempty" db:"latency_ms"`

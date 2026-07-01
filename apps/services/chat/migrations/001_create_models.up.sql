@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS messages (
     conversation_id UUID NOT NULL,
     role          VARCHAR(20) NOT NULL,
     content       TEXT NOT NULL,
-    model_id      UUID,
+    model_id      VARCHAR(100),
     token_input   INT,
     token_output  INT,
     latency_ms    INT,
