@@ -16,6 +16,7 @@ func Setup(
 	jwtManager *auth.JWTManager,
 	healthHandler *handler.HealthHandler,
 	authHandler *handler.AuthHandler,
+	chatHandler *handler.ChatHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -52,14 +53,14 @@ func Setup(
 			// Conversations
 			conversations := protected.Group("/conversations")
 			{
-				conversations.GET("", handler.NotImplemented("list conversations"))
-				conversations.POST("", handler.NotImplemented("create conversation"))
-				conversations.GET("/:id", handler.NotImplemented("get conversation"))
-				conversations.PATCH("/:id", handler.NotImplemented("update conversation"))
-				conversations.DELETE("/:id", handler.NotImplemented("delete conversation"))
-				conversations.GET("/:id/messages", handler.NotImplemented("list messages"))
-				conversations.POST("/:id/messages", handler.NotImplemented("send message"))
-				conversations.POST("/:id/messages/stream", handler.NotImplemented("stream message"))
+				conversations.GET("", chatHandler.ListConversations)
+				conversations.POST("", chatHandler.CreateConversation)
+				conversations.GET("/:id", chatHandler.GetConversation)
+				conversations.PATCH("/:id", chatHandler.UpdateConversation)
+				conversations.DELETE("/:id", chatHandler.DeleteConversation)
+				conversations.GET("/:id/messages", chatHandler.ListMessages)
+				conversations.POST("/:id/messages", chatHandler.SendMessage)
+				conversations.POST("/:id/messages/stream", chatHandler.StreamMessage)
 			}
 
 			// Prompts

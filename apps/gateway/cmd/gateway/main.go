@@ -21,9 +21,11 @@ import (
 	"github.com/omnidev/go-common/middleware"
 	"github.com/omnidev/go-common/telemetry"
 
+	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/handler"
 	"github.com/omnidev/gateway/internal/repository"
 	"github.com/omnidev/gateway/internal/router"
+	"github.com/omnidev/gateway/internal/service"
 )
 
 var (
@@ -96,9 +98,23 @@ func main() {
 	oauthRepository := repository.NewOAuthRepository(db.Pool)
 	apiKeyRepository := repository.NewAPIKeyRepository(db.Pool)
 
+	// Initialize Chat Service repositories
+	convRepository := repository.NewConversationRepository(db.Pool)
+	msgRepository := repository.NewMessageRepository(db.Pool)
+	modelRepository := repository.NewModelRepository(db.Pool)
+
+	// Initialize AI adapters
+	adapterRegistry := adapter.NewRegistry()
+	adapterRegistry.Register(adapter.NewDeepSeekAdapter(cfg.AI.DeepSeek))
+	adapterRegistry.Register(adapter.NewOpenAIAdapter(cfg.AI.OpenAI))
+
+	// Initialize services
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, redisClient)
+
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
 	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
+	chatHandler := handler.NewChatHandler(chatService)
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
@@ -120,7 +136,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
