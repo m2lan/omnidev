@@ -13,47 +13,23 @@ interface MessageBubbleProps {
   message: Message;
 }
 
-// Pre-process content to wrap HTML in code blocks
+// Pre-process content to wrap HTML documents in code blocks
+// Only triggers when content STARTS with a full HTML document
 function preprocessContent(content: string): string {
   // Already wrapped in code block
   if (content.trimStart().startsWith('```')) {
     return content;
   }
 
-  // Detect complete HTML documents or large HTML fragments
-  const htmlIndicators = [
-    /<!DOCTYPE\s+html/i,
-    /<html[\s>]/i,
-    /<\/html>/i,
-    /<head[\s>][\s\S]*?<\/head>/i,
-    /<body[\s>]/i,
-    /<style[\s>][\s\S]*?<\/style>/i,
-    /<script[\s>][\s\S]*?<\/script>/i,
-  ];
+  const trimmed = content.trimStart();
 
-  const hasHtmlDocument = htmlIndicators.some(pattern => pattern.test(content));
+  // Only detect HTML at the very beginning of content
+  const startsWithHtml =
+    trimmed.startsWith('<!DOCTYPE') ||
+    trimmed.startsWith('<html') ||
+    trimmed.startsWith('<HTML');
 
-  if (hasHtmlDocument) {
-    // Find the start of HTML content
-    const doctypeIndex = content.indexOf('<!DOCTYPE');
-    const htmlIndex = content.indexOf('<html');
-    const startIndex = Math.min(
-      doctypeIndex >= 0 ? doctypeIndex : Infinity,
-      htmlIndex >= 0 ? htmlIndex : Infinity
-    );
-
-    if (startIndex < Infinity && startIndex > 0) {
-      // Split into description and HTML
-      const description = content.substring(0, startIndex).trim();
-      const htmlContent = content.substring(startIndex).trim();
-
-      if (description) {
-        return description + '\n\n```html\n' + htmlContent + '\n```';
-      }
-      return '```html\n' + htmlContent + '\n```';
-    }
-
-    // HTML starts at beginning
+  if (startsWithHtml) {
     return '```html\n' + content + '\n```';
   }
 
@@ -71,8 +47,25 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
   const MAX_LENGTH = 3000;
   const isLong = !isUser && !isStreaming && message.content.length > MAX_LENGTH;
   const shouldTruncate = isLong && !expanded;
+
+  // Smart truncation: don't cut in middle of code block
+  const getTruncatedContent = (content: string, maxLen: number): string => {
+    let truncated = content.substring(0, maxLen);
+    // Count code block markers
+    const codeBlockCount = (truncated.match(/```/g) || []).length;
+    // If odd number of code block markers, we're inside a code block
+    if (codeBlockCount % 2 !== 0) {
+      // Find the last complete code block end
+      const lastEnd = truncated.lastIndexOf('```');
+      if (lastEnd > 0) {
+        truncated = truncated.substring(0, lastEnd + 3);
+      }
+    }
+    return truncated + "\n\n...(truncated)";
+  };
+
   const displayMessage = shouldTruncate
-    ? { ...message, content: message.content.substring(0, MAX_LENGTH) + "..." }
+    ? { ...message, content: getTruncatedContent(message.content, MAX_LENGTH) }
     : message;
 
   const handleCopy = () => {
