@@ -17,7 +17,7 @@ func Setup(
 	healthHandler *handler.HealthHandler,
 	authHandler *handler.AuthHandler,
 	chatHandler *handler.ChatHandler,
-	userAIConfigHandler *handler.UserAIConfigProxyHandler,
+	userAIConfigHandler *handler.UserAIConfigHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)

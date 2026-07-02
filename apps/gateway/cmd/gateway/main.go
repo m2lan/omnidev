@@ -111,14 +111,15 @@ func main() {
 
 	// Initialize encryption for user AI configs
 	var adapterFactory *adapter.Factory
-	var userAIConfigRepo repository.UserAIConfigRepository
+	var encryptor *crypto.Encryptor
+	userAIConfigRepo := repository.NewUserAIConfigRepository(db.Pool)
 	if cfg.Security.EncryptionKey != "" {
-		encryptor, err := crypto.NewEncryptorFromString(cfg.Security.EncryptionKey)
+		var err error
+		encryptor, err = crypto.NewEncryptorFromString(cfg.Security.EncryptionKey)
 		if err != nil {
-			logger.Log.Warn("Failed to init encryptor, user AI configs disabled", zap.Error(err))
+			logger.Log.Warn("Failed to init encryptor, AI config API keys will not be encrypted", zap.Error(err))
 		} else {
 			adapterFactory = adapter.NewFactory(encryptor)
-			userAIConfigRepo = repository.NewUserAIConfigRepository(db.Pool)
 		}
 	}
 
@@ -129,7 +130,7 @@ func main() {
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
 	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
 	chatHandler := handler.NewChatHandler(chatService)
-	userAIConfigHandler := handler.NewUserAIConfigProxyHandler("")
+	userAIConfigHandler := handler.NewUserAIConfigProxyHandler("", userAIConfigRepo, encryptor)
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
