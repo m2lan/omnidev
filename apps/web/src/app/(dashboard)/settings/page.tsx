@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
-import { api, UserAIConfig, CreateAIConfigInput, TestConnectionResult } from "@/lib/api/client";
+import { api, UserAIConfig, CreateAIConfigInput, UpdateAIConfigInput, TestConnectionResult } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -86,6 +86,16 @@ export default function SettingsPage() {
       alert("Failed to create configuration");
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handleUpdateAIConfig = async (id: string, input: UpdateAIConfigInput) => {
+    try {
+      await api.updateAIConfig(id, input);
+      await loadAIConfigs();
+    } catch (error) {
+      console.error("Failed to update AI config:", error);
+      throw error;
     }
   };
 
@@ -291,6 +301,7 @@ export default function SettingsPage() {
                   onSetDefault={handleSetDefaultAIConfig}
                   onDelete={handleDeleteAIConfig}
                   onTest={handleTestAIConfig}
+                  onUpdate={handleUpdateAIConfig}
                 />
               ))}
             </div>

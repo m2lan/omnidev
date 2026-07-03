@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CreateAIConfigInput, ModelConfig } from "@/lib/api/client";
+import { CreateAIConfigInput, UserAIConfig, ModelConfig } from "@/lib/api/client";
 
 interface AIConfigFormProps {
   onSubmit: (data: CreateAIConfigInput) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
+  initialData?: UserAIConfig;
+  isEdit?: boolean;
 }
 
 const PROVIDERS = [
@@ -39,14 +41,14 @@ const DEFAULT_MODELS: Record<string, ModelConfig[]> = {
   custom: [],
 };
 
-export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProps) {
-  const [provider, setProvider] = useState("openai");
-  const [displayName, setDisplayName] = useState("");
+export function AIConfigForm({ onSubmit, onCancel, isLoading, initialData, isEdit }: AIConfigFormProps) {
+  const [provider, setProvider] = useState(initialData?.provider || "openai");
+  const [displayName, setDisplayName] = useState(initialData?.display_name || "");
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
-  const [protocol, setProtocol] = useState<"openai" | "anthropic">("openai");
-  const [models, setModels] = useState<ModelConfig[]>(DEFAULT_MODELS.openai);
-  const [isDefault, setIsDefault] = useState(false);
+  const [baseUrl, setBaseUrl] = useState(initialData?.base_url || "https://api.openai.com/v1");
+  const [protocol, setProtocol] = useState<"openai" | "anthropic">(initialData?.protocol || "openai");
+  const [models, setModels] = useState<ModelConfig[]>(initialData?.models || DEFAULT_MODELS.openai);
+  const [isDefault, setIsDefault] = useState(initialData?.is_default || false);
   const [newModelId, setNewModelId] = useState("");
   const [newModelName, setNewModelName] = useState("");
 
@@ -61,7 +63,9 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
     } else {
       setProtocol("openai");
     }
-    setModels(DEFAULT_MODELS[newProvider] || []);
+    if (!isEdit) {
+      setModels(DEFAULT_MODELS[newProvider] || []);
+    }
   };
 
   const handleAddModel = () => {
@@ -81,7 +85,7 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = {
+    const data: CreateAIConfigInput = {
       provider,
       display_name: displayName,
       api_key: apiKey,
@@ -90,15 +94,16 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
       models,
       is_default: isDefault,
     };
-    console.log("Submitting AI config:", data);
     await onSubmit(data);
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add AI Provider</CardTitle>
-        <CardDescription>Configure a new AI provider connection</CardDescription>
+        <CardTitle>{isEdit ? "Edit AI Provider" : "Add AI Provider"}</CardTitle>
+        <CardDescription>
+          {isEdit ? "Update your AI provider configuration" : "Configure a new AI provider connection"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -110,6 +115,7 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
               value={provider}
               onChange={(e) => handleProviderChange(e.target.value)}
               className="w-full p-2 border rounded-md bg-background"
+              disabled={isEdit}
             >
               {PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>
@@ -133,14 +139,14 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
 
           {/* API Key */}
           <div className="space-y-2">
-            <Label htmlFor="api_key">API Key</Label>
+            <Label htmlFor="api_key">API Key {isEdit && "(leave empty to keep current)"}</Label>
             <Input
               id="api_key"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              required
+              placeholder={isEdit ? "••••••••" : "sk-..."}
+              required={!isEdit}
             />
           </div>
 
@@ -236,7 +242,7 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
           {/* Actions */}
           <div className="flex gap-2">
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving..." : "Save Configuration"}
+              {isLoading ? "Saving..." : isEdit ? "Update Configuration" : "Save Configuration"}
             </Button>
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel

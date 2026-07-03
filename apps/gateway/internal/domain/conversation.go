@@ -107,6 +107,7 @@ type PromptTemplate struct {
 type ChatChunk struct {
 	ID           string `json:"id"`
 	Delta        string `json:"delta"`
+	Type         string `json:"type,omitempty"` // "reasoning" or empty for content
 	FinishReason string `json:"finish_reason,omitempty"`
 	TokenInput   int    `json:"token_input,omitempty"`
 	TokenOutput  int    `json:"token_output,omitempty"`

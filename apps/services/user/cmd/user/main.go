@@ -117,7 +117,12 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 	r.Use(middleware.Recovery())
-	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:9090"}))
+	// CORS: allow all origins in development
+	corsOrigins := []string{"http://localhost:3000", "http://localhost:9090"}
+	if cfg.App.Env != "production" {
+		corsOrigins = []string{"*"}
+	}
+	r.Use(middleware.CORS(corsOrigins))
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {

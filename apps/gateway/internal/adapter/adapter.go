@@ -71,6 +71,7 @@ type ChatStreamChunk struct {
 	ID     string `json:"id"`
 	Delta  string `json:"delta"`
 	Model  string `json:"model"`
+	Type   string `json:"type,omitempty"` // "reasoning" or empty for content
 	Finish string `json:"finish,omitempty"`
 	Usage  *Usage `json:"usage,omitempty"`
 }

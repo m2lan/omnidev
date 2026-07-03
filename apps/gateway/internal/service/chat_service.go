@@ -539,10 +539,10 @@ func (s *ChatService) resolveAdapter(ctx context.Context, userID uuid.UUID, mode
 	if s.userConfigRepo != nil && s.adapterFactory != nil {
 		userConfigs, err := s.userConfigRepo.ListByUserID(ctx, userID)
 		if err == nil {
+			// First pass: look for exact model match
 			for _, cfg := range userConfigs {
 				for _, m := range cfg.Models {
 					if m == modelID {
-						// Found user config with this model, create adapter
 						adp, err := s.adapterFactory.CreateAdapter(cfg)
 						if err != nil {
 							logger.Log.Warn("Failed to create adapter from user config",
@@ -553,6 +553,36 @@ func (s *ChatService) resolveAdapter(ctx context.Context, userID uuid.UUID, mode
 						}
 						return adp, nil
 					}
+				}
+			}
+
+			// Second pass: use default config with empty models (supports all models)
+			for _, cfg := range userConfigs {
+				if cfg.IsDefault && len(cfg.Models) == 0 {
+					adp, err := s.adapterFactory.CreateAdapter(cfg)
+					if err != nil {
+						logger.Log.Warn("Failed to create adapter from default config",
+							zap.String("provider", cfg.Provider),
+							zap.Error(err),
+						)
+						break
+					}
+					return adp, nil
+				}
+			}
+
+			// Third pass: use any config with empty models
+			for _, cfg := range userConfigs {
+				if len(cfg.Models) == 0 {
+					adp, err := s.adapterFactory.CreateAdapter(cfg)
+					if err != nil {
+						logger.Log.Warn("Failed to create adapter from config",
+							zap.String("provider", cfg.Provider),
+							zap.Error(err),
+						)
+						continue
+					}
+					return adp, nil
 				}
 			}
 		}

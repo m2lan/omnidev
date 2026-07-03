@@ -11,6 +11,7 @@ interface ChatAreaProps {
   isLoading: boolean;
   isSending: boolean;
   streamingContent: string;
+  streamingReasoning: string;
   error: string | null;
   selectedModel: string;
   onSend: (content: string) => Promise<void>;
@@ -24,6 +25,7 @@ export function ChatArea({
   isLoading,
   isSending,
   streamingContent,
+  streamingReasoning,
   error,
   selectedModel,
   onSend,
@@ -159,6 +161,21 @@ export function ChatArea({
             <MessageBubble key={msg.id} message={msg} />
           ))}
 
+          {/* Streaming reasoning (thinking process) */}
+          {isSending && streamingReasoning && (
+            <div className="flex gap-3 px-4 py-3 animate-fade-in">
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-xs font-medium">
+                💭
+              </div>
+              <div className="flex-1">
+                <details open className="text-sm text-muted-foreground">
+                  <summary className="cursor-pointer font-medium mb-1">Thinking...</summary>
+                  <div className="whitespace-pre-wrap text-xs opacity-70">{streamingReasoning}</div>
+                </details>
+              </div>
+            </div>
+          )}
+
           {/* Streaming content */}
           {isSending && streamingContent && (
             <MessageBubble
@@ -173,7 +190,7 @@ export function ChatArea({
           )}
 
           {/* Loading indicator */}
-          {isSending && !streamingContent && (
+          {isSending && !streamingContent && !streamingReasoning && (
             <div className="flex gap-3 px-4 py-3 animate-fade-in">
               <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium">
                 AI

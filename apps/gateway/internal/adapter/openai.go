@@ -123,14 +123,9 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 	}
 
 	choice := result.Choices[0]
-	// Use content if available, fallback to reasoning_content (mimo)
-	content := choice.Message.Content
-	if content == "" {
-		content = choice.Message.ReasoningContent
-	}
 	return &ChatResponse{
 		ID:      result.ID,
-		Content: content,
+		Content: choice.Message.Content,
 		Model:   result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
@@ -196,16 +191,22 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 
 			if len(chunk.Choices) > 0 {
 				delta := chunk.Choices[0].Delta
-				// Use content if available, fallback to reasoning_content (mimo)
-				content := delta.Content
-				if content == "" {
-					content = delta.ReasoningContent
+				// Stream reasoning content with prefix, then actual content
+				if delta.ReasoningContent != "" {
+					ch <- ChatStreamChunk{
+						ID:     chunk.ID,
+						Delta:  delta.ReasoningContent,
+						Model:  chunk.Model,
+						Type:   "reasoning",
+					}
 				}
-				ch <- ChatStreamChunk{
-					ID:     chunk.ID,
-					Delta:  content,
-					Model:  chunk.Model,
-					Finish: chunk.Choices[0].FinishReason,
+				if delta.Content != "" {
+					ch <- ChatStreamChunk{
+						ID:     chunk.ID,
+						Delta:  delta.Content,
+						Model:  chunk.Model,
+						Finish: chunk.Choices[0].FinishReason,
+					}
 				}
 			}
 		}

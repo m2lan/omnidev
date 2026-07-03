@@ -101,6 +101,7 @@ func Wrap(err error, message string) *AppError {
 	return &AppError{
 		Code:    http.StatusInternalServerError,
 		Message: message,
+		Detail:  err.Error(),
 		Err:     err,
 	}
 }

@@ -7,7 +7,9 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   isSending: boolean;
+  sendingConversationId: string | null;
   streamingContent: string;
+  streamingReasoning: string;
   error: string | null;
   selectedModel: string;
 
@@ -19,6 +21,7 @@ interface ChatState {
   sendMessage: (content: string) => Promise<void>;
   setSelectedModel: (model: string) => void;
   clearError: () => void;
+  resetSending: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -27,7 +30,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   isSending: false,
+  sendingConversationId: null,
   streamingContent: "",
+  streamingReasoning: "",
   error: null,
   selectedModel: "",
 
@@ -64,7 +69,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setActiveConversation: async (id: string) => {
-    set({ activeConversationId: id, messages: [], isLoading: true, error: null });
+    const { sendingConversationId } = get();
+    set({
+      activeConversationId: id,
+      messages: [],
+      isLoading: true,
+      error: null,
+      // Clear streaming content if switching to a different conversation
+      streamingContent: sendingConversationId === id ? get().streamingContent : "",
+      streamingReasoning: sendingConversationId === id ? get().streamingReasoning : "",
+    });
     try {
       // Only load last 10 messages for performance
       const { data } = await api.listMessages(id, { page_size: 10 });
@@ -107,12 +121,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    set({ isSending: true, error: null, streamingContent: "" });
+    const conversationId = activeConversationId;
+    set({ isSending: true, sendingConversationId: conversationId, error: null, streamingContent: "", streamingReasoning: "" });
 
     // Optimistic: add user message
     const userMsg: Message = {
       id: `temp-${Date.now()}`,
-      conversation_id: activeConversationId,
+      conversation_id: conversationId,
       role: "user",
       content,
       created_at: new Date().toISOString(),
@@ -120,15 +135,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ messages: [...state.messages, userMsg] }));
 
     let fullContent = "";
+    let fullReasoning = "";
 
     await api.sendMessageStream(
-      activeConversationId,
+      conversationId,
       content,
       selectedModel || undefined,
       // onChunk
-      (delta: string) => {
-        fullContent += delta;
-        set({ streamingContent: fullContent });
+      (delta: string, type?: string) => {
+        if (type === "reasoning") {
+          fullReasoning += delta;
+        } else {
+          fullContent += delta;
+        }
+        // Only update streaming content if still on same conversation
+        if (get().activeConversationId === conversationId) {
+          set({ streamingContent: fullContent, streamingReasoning: fullReasoning });
+        }
       },
       // onUserMessage
       (msg: Message) => {
@@ -141,12 +164,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // onComplete
       (assistantMsg: Message) => {
         set((state) => ({
-          messages: [
-            ...state.messages,
-            assistantMsg,
-          ],
-          isSending: false,
-          streamingContent: "",
+          messages: state.activeConversationId === conversationId
+            ? [...state.messages, assistantMsg]
+            : state.messages,
+          isSending: state.sendingConversationId === conversationId ? false : state.isSending,
+          sendingConversationId: state.sendingConversationId === conversationId ? null : state.sendingConversationId,
+          streamingContent: state.sendingConversationId === conversationId ? "" : state.streamingContent,
+          streamingReasoning: state.sendingConversationId === conversationId ? "" : state.streamingReasoning,
         }));
         // Refresh conversation list
         get().fetchConversations();
@@ -154,9 +178,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // onError
       (errorMsg: string) => {
         set((state) => ({
-          messages: state.messages.filter((m) => m.id !== userMsg.id),
-          isSending: false,
-          streamingContent: "",
+          messages: state.activeConversationId === conversationId
+            ? state.messages.filter((m) => m.id !== userMsg.id)
+            : state.messages,
+          isSending: state.sendingConversationId === conversationId ? false : state.isSending,
+          sendingConversationId: state.sendingConversationId === conversationId ? null : state.sendingConversationId,
+          streamingContent: state.sendingConversationId === conversationId ? "" : state.streamingContent,
+          streamingReasoning: state.sendingConversationId === conversationId ? "" : state.streamingReasoning,
           error: errorMsg,
         }));
       }
@@ -169,5 +197,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearError: () => {
     set({ error: null });
+  },
+
+  resetSending: () => {
+    set({ isSending: false, sendingConversationId: null, streamingContent: "", streamingReasoning: "" });
   },
 }));

@@ -1,18 +1,27 @@
 // API Client for OmniDev Platform
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9090";
+function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  // In browser, use same host with gateway port
+  if (typeof window !== "undefined") {
+    const { protocol, hostname } = window.location;
+    return `${protocol}//${hostname}:9090`;
+  }
+  return "http://localhost:9090";
+}
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
 class ApiClient {
-  private baseUrl: string;
   private accessToken: string | null = null;
   private refreshTokenPromise: Promise<string> | null = null;
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+  private get baseUrl(): string {
+    return getApiBase();
   }
 
   // Lazy getter: always read from localStorage to handle page refresh
@@ -228,7 +237,7 @@ class ApiClient {
     conversationId: string,
     content: string,
     modelId: string | undefined,
-    onChunk: (delta: string) => void,
+    onChunk: (delta: string, type?: string) => void,
     onUserMessage: (msg: Message) => void,
     onComplete: (assistantMsg: Message) => void,
     onError: (error: string) => void
@@ -305,7 +314,7 @@ class ApiClient {
 
               // Check for delta content
               if (parsed.delta) {
-                onChunk(parsed.delta);
+                onChunk(parsed.delta, parsed.type);
                 currentEvent = "";
                 continue;
               }
@@ -606,4 +615,4 @@ export interface TestConnectionResult {
   latency_ms: number;
 }
 
-export const api = new ApiClient(API_BASE);
+export const api = new ApiClient();

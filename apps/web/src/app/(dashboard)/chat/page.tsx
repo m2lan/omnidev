@@ -13,7 +13,9 @@ export default function ChatPage() {
     messages,
     isLoading,
     isSending,
+    sendingConversationId,
     streamingContent,
+    streamingReasoning,
     error,
     selectedModel,
     fetchConversations,
@@ -23,11 +25,16 @@ export default function ChatPage() {
     sendMessage,
     setSelectedModel,
     clearError,
+    resetSending,
   } = useChatStore();
 
+  // Only show sending state if the active conversation is the one being sent
+  const isActiveSending = isSending && sendingConversationId === activeConversationId;
+
   useEffect(() => {
+    resetSending();
     fetchConversations();
-  }, [fetchConversations]);
+  }, [fetchConversations, resetSending]);
 
   const handleNewChat = () => {
     // Just reset to empty state, conversation will be created on first message
@@ -73,8 +80,9 @@ export default function ChatPage() {
         <ChatArea
           messages={messages}
           isLoading={isLoading}
-          isSending={isSending}
-          streamingContent={streamingContent}
+          isSending={isActiveSending}
+          streamingContent={isActiveSending ? streamingContent : ""}
+          streamingReasoning={isActiveSending ? streamingReasoning : ""}
           error={error}
           selectedModel={selectedModel}
           onSend={handleSendMessage}

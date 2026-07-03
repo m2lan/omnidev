@@ -104,13 +104,22 @@ func main() {
 	msgRepository := repository.NewMessageRepository(db.Pool)
 	modelRepository := repository.NewModelRepository(db.Pool)
 
-	// Initialize AI adapters
+	// Initialize AI adapters (only register providers with API keys)
 	adapterRegistry := adapter.NewRegistry()
-	adapterRegistry.Register(adapter.NewDeepSeekAdapter(cfg.AI.DeepSeek))
-	adapterRegistry.Register(adapter.NewOpenAIAdapter(cfg.AI.OpenAI))
+	if cfg.AI.OpenAI.APIKey != "" {
+		adapterRegistry.Register(adapter.NewOpenAIAdapter(cfg.AI.OpenAI))
+	}
+	if cfg.AI.DeepSeek.APIKey != "" {
+		adapterRegistry.Register(adapter.NewDeepSeekAdapter(cfg.AI.DeepSeek))
+	}
+	if cfg.AI.Anthropic.APIKey != "" {
+		adapterRegistry.Register(adapter.NewAnthropicAdapter(cfg.AI.Anthropic))
+	}
+	if cfg.AI.Qwen.APIKey != "" {
+		adapterRegistry.Register(adapter.NewQwenAdapter(cfg.AI.Qwen))
+	}
 
 	// Initialize encryption for user AI configs
-	var adapterFactory *adapter.Factory
 	var encryptor *crypto.Encryptor
 	userAIConfigRepo := repository.NewUserAIConfigRepository(db.Pool)
 	if cfg.Security.EncryptionKey != "" {
@@ -118,10 +127,10 @@ func main() {
 		encryptor, err = crypto.NewEncryptorFromString(cfg.Security.EncryptionKey)
 		if err != nil {
 			logger.Log.Warn("Failed to init encryptor, AI config API keys will not be encrypted", zap.Error(err))
-		} else {
-			adapterFactory = adapter.NewFactory(encryptor)
 		}
 	}
+	// Always initialize factory (handles nil encryptor for plaintext keys)
+	adapterFactory := adapter.NewFactory(encryptor)
 
 	// Initialize services
 	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel)
@@ -143,7 +152,12 @@ func main() {
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 	r.Use(middleware.Recovery())
-	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:9090"}))
+	// CORS: allow all origins in development
+	corsOrigins := []string{"http://localhost:3000", "http://localhost:9090"}
+	if cfg.App.Env != "production" {
+		corsOrigins = []string{"*"}
+	}
+	r.Use(middleware.CORS(corsOrigins))
 
 	// Rate limiter (if Redis is available)
 	if redisClient != nil {

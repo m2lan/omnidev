@@ -30,16 +30,21 @@ type Factory struct {
 }
 
 // NewFactory creates a new adapter factory.
+// The encryptor can be nil if encryption is not configured (API keys stored in plaintext).
 func NewFactory(encryptor *crypto.Encryptor) *Factory {
 	return &Factory{encryptor: encryptor}
 }
 
 // CreateAdapter creates an adapter from a user config.
 func (f *Factory) CreateAdapter(cfg *UserAIConfig) (Adapter, error) {
-	// Decrypt API key
-	apiKey, err := f.encryptor.Decrypt(cfg.APIKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt API key: %w", err)
+	// Decrypt API key if encryptor is available, otherwise use as-is
+	apiKey := cfg.APIKey
+	if f.encryptor != nil {
+		var err error
+		apiKey, err = f.encryptor.Decrypt(cfg.APIKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt API key: %w", err)
+		}
 	}
 
 	switch cfg.Protocol {
