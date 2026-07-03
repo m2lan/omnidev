@@ -293,7 +293,24 @@ export function ChatArea({
       <div className="border-t p-4">
         <div className="w-full mx-auto">
           <ModelSelector value={selectedModel} onChange={onModelChange} />
+          {/* Upload error */}
+          {uploadError && (
+            <div className="mt-2 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded">
+              {uploadError}
+            </div>
+          )}
+          {/* Attachment previews */}
+          <AttachmentPreviewList
+            attachments={pendingAttachments}
+            onRemove={handleRemoveAttachment}
+            disabled={isSending}
+          />
           <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
+            <FileUploadButton
+              onUploadComplete={handleUploadComplete}
+              onError={handleUploadError}
+              disabled={isSending}
+            />
             <textarea
               ref={textareaRef}
               value={input}
@@ -304,7 +321,11 @@ export function ChatArea({
               rows={1}
               disabled={isSending}
             />
-            <Button type="submit" disabled={!input.trim() || isSending} className="self-end">
+            <Button
+              type="submit"
+              disabled={(!input.trim() && pendingAttachments.length === 0) || isSending}
+              className="self-end"
+            >
               {isSending ? "..." : "Send"}
             </Button>
           </form>

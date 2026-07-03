@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -296,50 +297,79 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		// Check if message has image attachments
+		// Check if message has attachments
 		var imageDataURLs []string
+		var docContents []string
 		if s.attRepo != nil {
 			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
 			if err == nil {
 				for _, att := range attachments {
 					if att.IsImage() {
-						// Download image and convert to base64
 						dataURL, err := s.imageToBase64(ctx, att)
 						if err == nil {
 							imageDataURLs = append(imageDataURLs, dataURL)
+						}
+					} else if att.IsDocument() {
+						data, err := s.downloadAttachment(ctx, att)
+						if err == nil {
+							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
 						}
 					}
 				}
 			}
 		}
 
+		content := msg.Content
+		if len(docContents) > 0 {
+			content += strings.Join(docContents, "")
+		}
+
 		if len(imageDataURLs) > 0 {
-			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageDataURLs))
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), content, imageDataURLs))
 		} else {
-			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), content))
 		}
 	}
 
 	// Also check current message attachments
 	var currentImageDataURLs []string
+	var currentDocContents []string
 	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
 		for _, idStr := range input.AttachmentIDs {
 			if id, err := uuid.Parse(idStr); err == nil {
 				att, err := s.attRepo.GetByID(ctx, id)
-				if err == nil && att.IsImage() {
-					dataURL, err := s.imageToBase64(ctx, att)
-					if err == nil {
-						currentImageDataURLs = append(currentImageDataURLs, dataURL)
+				if err == nil {
+					if att.IsImage() {
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							currentImageDataURLs = append(currentImageDataURLs, dataURL)
+						}
+					} else if att.IsDocument() {
+						data, err := s.downloadAttachment(ctx, att)
+						if err == nil {
+							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+						}
 					}
 				}
 			}
 		}
 	}
-	// Update the last user message in adapterMsgs to include images
-	if len(currentImageDataURLs) > 0 && len(adapterMsgs) > 0 {
+
+	// Build final content for current message
+	currentContent := input.Content
+	if len(currentDocContents) > 0 {
+		currentContent += strings.Join(currentDocContents, "")
+	}
+
+	// Update the last user message in adapterMsgs
+	if (len(currentImageDataURLs) > 0 || len(currentDocContents) > 0) && len(adapterMsgs) > 0 {
 		lastIdx := len(adapterMsgs) - 1
 		if adapterMsgs[lastIdx].Role == "user" {
-			adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", input.Content, currentImageDataURLs)
+			if len(currentImageDataURLs) > 0 {
+				adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", currentContent, currentImageDataURLs)
+			} else {
+				adapterMsgs[lastIdx] = adapter.NewTextMessage("user", currentContent)
+			}
 		}
 	}
 
@@ -450,8 +480,9 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		// Check if message has image attachments
+		// Check if message has attachments
 		var imageDataURLs []string
+		var docContents []string
 		if s.attRepo != nil {
 			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
 			if err == nil {
@@ -461,38 +492,68 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 						if err == nil {
 							imageDataURLs = append(imageDataURLs, dataURL)
 						}
+					} else if att.IsDocument() {
+						// Download and extract text from document
+						data, err := s.downloadAttachment(ctx, att)
+						if err == nil {
+							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+						}
 					}
 				}
 			}
 		}
 
+		content := msg.Content
+		if len(docContents) > 0 {
+			content += strings.Join(docContents, "")
+		}
+
 		if len(imageDataURLs) > 0 {
-			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageDataURLs))
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), content, imageDataURLs))
 		} else {
-			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), content))
 		}
 	}
 
 	// Also check current message attachments
 	var currentImageDataURLs []string
+	var currentDocContents []string
 	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
 		for _, idStr := range input.AttachmentIDs {
 			if id, err := uuid.Parse(idStr); err == nil {
 				att, err := s.attRepo.GetByID(ctx, id)
-				if err == nil && att.IsImage() {
-					dataURL, err := s.imageToBase64(ctx, att)
-					if err == nil {
-						currentImageDataURLs = append(currentImageDataURLs, dataURL)
+				if err == nil {
+					if att.IsImage() {
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							currentImageDataURLs = append(currentImageDataURLs, dataURL)
+						}
+					} else if att.IsDocument() {
+						data, err := s.downloadAttachment(ctx, att)
+						if err == nil {
+							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+						}
 					}
 				}
 			}
 		}
 	}
-	// Update the last user message in adapterMsgs to include images
-	if len(currentImageDataURLs) > 0 && len(adapterMsgs) > 0 {
+
+	// Build final content for current message
+	currentContent := input.Content
+	if len(currentDocContents) > 0 {
+		currentContent += strings.Join(currentDocContents, "")
+	}
+
+	// Update the last user message in adapterMsgs
+	if (len(currentImageDataURLs) > 0 || len(currentDocContents) > 0) && len(adapterMsgs) > 0 {
 		lastIdx := len(adapterMsgs) - 1
 		if adapterMsgs[lastIdx].Role == "user" {
-			adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", input.Content, currentImageDataURLs)
+			if len(currentImageDataURLs) > 0 {
+				adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", currentContent, currentImageDataURLs)
+			} else {
+				adapterMsgs[lastIdx] = adapter.NewTextMessage("user", currentContent)
+			}
 		}
 	}
 
@@ -770,4 +831,19 @@ func (s *ChatService) imageToBase64(ctx context.Context, att *domain.Attachment)
 
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return fmt.Sprintf("data:%s;base64,%s", att.MimeType, encoded), nil
+}
+
+// downloadAttachment downloads an attachment from MinIO.
+func (s *ChatService) downloadAttachment(ctx context.Context, att *domain.Attachment) ([]byte, error) {
+	if s.minioCli == nil {
+		return nil, fmt.Errorf("minio not configured")
+	}
+
+	reader, err := s.minioCli.Download(ctx, "chat", att.StorageKey)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	return io.ReadAll(reader)
 }

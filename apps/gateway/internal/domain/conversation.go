@@ -137,3 +137,15 @@ type Attachment struct {
 func (a *Attachment) IsImage() bool {
 	return len(a.MimeType) >= 6 && a.MimeType[:6] == "image/"
 }
+
+// IsDocument returns true if the attachment is a document type.
+func (a *Attachment) IsDocument() bool {
+	switch a.MimeType {
+	case "application/pdf",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"text/plain", "text/markdown":
+		return true
+	}
+	return false
+}
