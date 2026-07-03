@@ -18,6 +18,7 @@ func Setup(
 	authHandler *handler.AuthHandler,
 	chatHandler *handler.ChatHandler,
 	userAIConfigHandler *handler.UserAIConfigHandler,
+	uploadHandler *handler.UploadHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -66,6 +67,11 @@ func Setup(
 
 			// Models
 			protected.GET("/models", chatHandler.ListModels)
+
+			// Upload & Attachments
+			protected.POST("/upload", uploadHandler.Upload)
+			protected.GET("/attachments/:id", uploadHandler.GetAttachment)
+			protected.DELETE("/attachments/:id", uploadHandler.DeleteAttachment)
 
 			// User AI Configs
 			aiConfigs := protected.Group("/user/ai-configs")

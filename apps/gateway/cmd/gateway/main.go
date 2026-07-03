@@ -20,6 +20,7 @@ import (
 	"github.com/omnidev/go-common/database"
 	"github.com/omnidev/go-common/logger"
 	"github.com/omnidev/go-common/middleware"
+	"github.com/omnidev/go-common/storage"
 	"github.com/omnidev/go-common/telemetry"
 
 	"github.com/omnidev/gateway/internal/adapter"
@@ -103,6 +104,13 @@ func main() {
 	convRepository := repository.NewConversationRepository(db.Pool)
 	msgRepository := repository.NewMessageRepository(db.Pool)
 	modelRepository := repository.NewModelRepository(db.Pool)
+	attRepository := repository.NewPostgresAttachmentRepository(db.Pool)
+
+	// Initialize MinIO client
+	minioClient, err := storage.NewMinIO(cfg.MinIO)
+	if err != nil {
+		logger.Log.Warn("Failed to connect to MinIO, file upload disabled", zap.Error(err))
+	}
 
 	// Initialize AI adapters (only register providers with API keys)
 	adapterRegistry := adapter.NewRegistry()
@@ -133,13 +141,23 @@ func main() {
 	adapterFactory := adapter.NewFactory(encryptor)
 
 	// Initialize services
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel)
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient)
+
+	// Initialize upload service (if MinIO is available)
+	var uploadService *service.UploadService
+	if minioClient != nil {
+		uploadService = service.NewUploadService(attRepository, minioClient)
+	}
 
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
 	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
 	chatHandler := handler.NewChatHandler(chatService)
 	userAIConfigHandler := handler.NewUserAIConfigProxyHandler("", userAIConfigRepo, encryptor)
+	var uploadHandler *handler.UploadHandler
+	if uploadService != nil {
+		uploadHandler = handler.NewUploadHandler(uploadService)
+	}
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
@@ -166,7 +184,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

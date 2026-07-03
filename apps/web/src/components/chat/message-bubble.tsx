@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/lib/api/client";
+import type { Message, Attachment } from "@/lib/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface MessageBubbleProps {
@@ -174,6 +174,14 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
               : "bg-muted"
           )}
         >
+          {/* Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className={cn("flex flex-wrap gap-2 mb-2", isUser ? "justify-end" : "")}>
+              {message.attachments.map((att) => (
+                <AttachmentBadge key={att.id} attachment={att} isUser={isUser} />
+              ))}
+            </div>
+          )}
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           ) : isStreaming ? (
@@ -349,3 +357,80 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
     </div>
   );
 });
+
+// Attachment badge component
+function AttachmentBadge({
+  attachment,
+  isUser,
+}: {
+  attachment: Attachment;
+  isUser: boolean;
+}) {
+  const isImage = attachment.mime_type.startsWith("image/");
+  const [expanded, setExpanded] = useState(false);
+
+  if (isImage) {
+    return (
+      <div className="relative group">
+        <img
+          src={attachment.storage_url}
+          alt={attachment.filename}
+          className={cn(
+            "max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer transition-transform hover:scale-105",
+            expanded && "max-w-[400px] max-h-[300px]"
+          )}
+          onClick={() => setExpanded(!expanded)}
+          loading="lazy"
+        />
+        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-2 py-1 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity truncate">
+          {attachment.filename}
+        </div>
+      </div>
+    );
+  }
+
+  // Document badge
+  return (
+    <a
+      href={attachment.storage_url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs hover:bg-muted/50 transition-colors max-w-[200px]",
+        isUser
+          ? "border-primary-foreground/20 text-primary-foreground"
+          : "border-border"
+      )}
+    >
+      <span className="text-base">
+        {getFileTypeIcon(attachment.mime_type)}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="truncate font-medium">{attachment.filename}</div>
+        <div className="text-muted-foreground">
+          {formatFileSize(attachment.file_size)}
+        </div>
+      </div>
+    </a>
+  );
+}
+
+// Helper: get icon for file type
+function getFileTypeIcon(mimeType: string): string {
+  if (mimeType.includes("pdf")) return "📄";
+  if (mimeType.includes("word") || mimeType.includes("document")) return "📝";
+  if (mimeType.includes("sheet") || mimeType.includes("excel")) return "📊";
+  if (mimeType.includes("presentation") || mimeType.includes("powerpoint")) return "📽️";
+  if (mimeType.includes("text/plain")) return "📃";
+  if (mimeType.includes("text/markdown")) return "📋";
+  return "📎";
+}
+
+// Helper: format file size
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}

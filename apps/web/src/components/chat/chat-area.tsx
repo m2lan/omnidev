@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import type { Message } from "@/lib/api/client";
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { Message, Attachment } from "@/lib/api/client";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ModelSelector } from "@/components/chat/model-selector";
+import {
+  FileUploadButton,
+  AttachmentPreviewList,
+} from "@/components/chat/file-upload-button";
 import { Button } from "@/components/ui/button";
 
 interface ChatAreaProps {
@@ -14,7 +18,7 @@ interface ChatAreaProps {
   streamingReasoning: string;
   error: string | null;
   selectedModel: string;
-  onSend: (content: string) => Promise<void>;
+  onSend: (content: string, attachmentIds?: string[], attachments?: Attachment[]) => Promise<void>;
   onModelChange: (model: string) => void;
   onClearError: () => void;
   hasConversation: boolean;
@@ -34,6 +38,8 @@ export function ChatArea({
   hasConversation,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -50,15 +56,45 @@ export function ChatArea({
     }
   }, [input]);
 
+  const handleUploadComplete = useCallback((attachment: Attachment) => {
+    console.log("Upload complete callback:", attachment);
+    setPendingAttachments((prev) => {
+      console.log("Updating pending attachments:", prev, attachment);
+      return [...prev, attachment];
+    });
+    setUploadError(null);
+  }, []);
+
+  const handleUploadError = useCallback((error: string) => {
+    setUploadError(error);
+    // Auto-clear after 5 seconds
+    setTimeout(() => setUploadError(null), 5000);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isSending) return;
+    const hasContent = input.trim().length > 0;
+    const hasAttachments = pendingAttachments.length > 0;
+    console.log("Submit:", { hasContent, hasAttachments, pendingAttachments });
+    if ((!hasContent && !hasAttachments) || isSending) return;
 
     const content = input.trim();
+    const attachmentIds = pendingAttachments.map((a) => a.id);
+    const attachmentsData = [...pendingAttachments];
+    console.log("Sending with attachmentIds:", attachmentIds, attachmentsData);
+
+    // Clear input and attachments immediately
     setInput("");
+    setPendingAttachments([]);
+    setUploadError(null);
     onClearError();
+
     try {
-      await onSend(content);
+      await onSend(content || "(file attachment)", attachmentIds, attachmentsData);
     } catch {
       // Restore input on error so user can retry
       setInput(content);
@@ -108,7 +144,24 @@ export function ChatArea({
         <div className="border-t p-4">
           <div className="w-full mx-auto">
             <ModelSelector value={selectedModel} onChange={onModelChange} />
+            {/* Upload error */}
+            {uploadError && (
+              <div className="mt-2 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded">
+                {uploadError}
+              </div>
+            )}
+            {/* Attachment previews */}
+            <AttachmentPreviewList
+              attachments={pendingAttachments}
+              onRemove={handleRemoveAttachment}
+              disabled={isSending}
+            />
             <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
+              <FileUploadButton
+                onUploadComplete={handleUploadComplete}
+                onError={handleUploadError}
+                disabled={isSending}
+              />
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -119,7 +172,11 @@ export function ChatArea({
                 rows={1}
                 disabled={isSending}
               />
-              <Button type="submit" disabled={!input.trim() || isSending} className="self-end">
+              <Button
+                type="submit"
+                disabled={(!input.trim() && pendingAttachments.length === 0) || isSending}
+                className="self-end"
+              >
                 {isSending ? "..." : "Send"}
               </Button>
             </form>

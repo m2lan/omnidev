@@ -3,8 +3,10 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +15,7 @@ import (
 	"github.com/omnidev/go-common/cache"
 	appErr "github.com/omnidev/go-common/errors"
 	"github.com/omnidev/go-common/logger"
+	"github.com/omnidev/go-common/storage"
 
 	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/domain"
@@ -28,14 +31,16 @@ type UserAIConfigRepository interface {
 
 // ChatService handles chat operations.
 type ChatService struct {
-	convRepo      repository.ConversationRepository
-	msgRepo       repository.MessageRepository
-	modelRepo     repository.ModelRepository
-	adapters      *adapter.Registry
+	convRepo       repository.ConversationRepository
+	msgRepo        repository.MessageRepository
+	modelRepo      repository.ModelRepository
+	attRepo        repository.AttachmentRepository
+	minioCli       *storage.MinIO
+	adapters       *adapter.Registry
 	adapterFactory *adapter.Factory
 	userConfigRepo UserAIConfigRepository
-	cache         *cache.Redis
-	defaultModel  string
+	cache          *cache.Redis
+	defaultModel   string
 }
 
 // NewChatService creates a new chat service.
@@ -48,8 +53,9 @@ func NewChatService(
 	userConfigRepo UserAIConfigRepository,
 	cache *cache.Redis,
 	defaultModel string,
+	opts ...interface{},
 ) *ChatService {
-	return &ChatService{
+	svc := &ChatService{
 		convRepo:       convRepo,
 		msgRepo:        msgRepo,
 		modelRepo:      modelRepo,
@@ -59,6 +65,15 @@ func NewChatService(
 		cache:          cache,
 		defaultModel:   defaultModel,
 	}
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case repository.AttachmentRepository:
+			svc.attRepo = v
+		case *storage.MinIO:
+			svc.minioCli = v
+		}
+	}
+	return svc
 }
 
 // CreateConversationInput defines the input for creating a conversation.
@@ -217,8 +232,9 @@ func (s *ChatService) ListMessages(ctx context.Context, userID, convID uuid.UUID
 
 // SendMessageInput defines the input for sending a message.
 type SendMessageInput struct {
-	Content string `json:"content" validate:"required"`
-	ModelID string `json:"model_id"`
+	Content       string    `json:"content" validate:"required"`
+	ModelID       string    `json:"model_id"`
+	AttachmentIDs []string  `json:"attachment_ids,omitempty"`
 }
 
 // SendMessage sends a message and returns the AI response.
@@ -253,6 +269,21 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 		return nil, nil, appErr.Wrap(err, "failed to save user message")
 	}
 
+	// Associate attachments with message
+	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
+		attUUIDs := make([]uuid.UUID, 0, len(input.AttachmentIDs))
+		for _, idStr := range input.AttachmentIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				attUUIDs = append(attUUIDs, id)
+			}
+		}
+		if len(attUUIDs) > 0 {
+			if err := s.attRepo.UpdateMessageID(ctx, attUUIDs, userMsg.ID); err != nil {
+				logger.Log.Warn("failed to associate attachments", zap.Error(err))
+			}
+		}
+	}
+
 	// Get recent messages for context
 	recentMsgs, err := s.msgRepo.GetRecentMessages(ctx, convID, 20)
 	if err != nil {
@@ -262,16 +293,54 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 	// Build adapter messages
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    "system",
-			Content: *conv.SystemPrompt,
-		})
+		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		})
+		// Check if message has image attachments
+		var imageDataURLs []string
+		if s.attRepo != nil {
+			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
+			if err == nil {
+				for _, att := range attachments {
+					if att.IsImage() {
+						// Download image and convert to base64
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							imageDataURLs = append(imageDataURLs, dataURL)
+						}
+					}
+				}
+			}
+		}
+
+		if len(imageDataURLs) > 0 {
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageDataURLs))
+		} else {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+		}
+	}
+
+	// Also check current message attachments
+	var currentImageDataURLs []string
+	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
+		for _, idStr := range input.AttachmentIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				att, err := s.attRepo.GetByID(ctx, id)
+				if err == nil && att.IsImage() {
+					dataURL, err := s.imageToBase64(ctx, att)
+					if err == nil {
+						currentImageDataURLs = append(currentImageDataURLs, dataURL)
+					}
+				}
+			}
+		}
+	}
+	// Update the last user message in adapterMsgs to include images
+	if len(currentImageDataURLs) > 0 && len(adapterMsgs) > 0 {
+		lastIdx := len(adapterMsgs) - 1
+		if adapterMsgs[lastIdx].Role == "user" {
+			adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", input.Content, currentImageDataURLs)
+		}
 	}
 
 	// Get adapter (user config first, then global)
@@ -355,6 +424,21 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		return nil, nil, appErr.Wrap(err, "failed to save user message")
 	}
 
+	// Associate attachments with message
+	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
+		attUUIDs := make([]uuid.UUID, 0, len(input.AttachmentIDs))
+		for _, idStr := range input.AttachmentIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				attUUIDs = append(attUUIDs, id)
+			}
+		}
+		if len(attUUIDs) > 0 {
+			if err := s.attRepo.UpdateMessageID(ctx, attUUIDs, userMsg.ID); err != nil {
+				logger.Log.Warn("failed to associate attachments", zap.Error(err))
+			}
+		}
+	}
+
 	// Get context
 	recentMsgs, err := s.msgRepo.GetRecentMessages(ctx, convID, 20)
 	if err != nil {
@@ -363,16 +447,53 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    "system",
-			Content: *conv.SystemPrompt,
-		})
+		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		})
+		// Check if message has image attachments
+		var imageDataURLs []string
+		if s.attRepo != nil {
+			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
+			if err == nil {
+				for _, att := range attachments {
+					if att.IsImage() {
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							imageDataURLs = append(imageDataURLs, dataURL)
+						}
+					}
+				}
+			}
+		}
+
+		if len(imageDataURLs) > 0 {
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageDataURLs))
+		} else {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+		}
+	}
+
+	// Also check current message attachments
+	var currentImageDataURLs []string
+	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
+		for _, idStr := range input.AttachmentIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				att, err := s.attRepo.GetByID(ctx, id)
+				if err == nil && att.IsImage() {
+					dataURL, err := s.imageToBase64(ctx, att)
+					if err == nil {
+						currentImageDataURLs = append(currentImageDataURLs, dataURL)
+					}
+				}
+			}
+		}
+	}
+	// Update the last user message in adapterMsgs to include images
+	if len(currentImageDataURLs) > 0 && len(adapterMsgs) > 0 {
+		lastIdx := len(adapterMsgs) - 1
+		if adapterMsgs[lastIdx].Role == "user" {
+			adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", input.Content, currentImageDataURLs)
+		}
 	}
 
 	aiAdapter, err := s.resolveAdapter(ctx, userID, modelID)
@@ -397,7 +518,6 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		var fullContent string
 		start := time.Now()
 
-
 		for chunk := range stream {
 			fullContent += chunk.Delta
 			ch <- domain.ChatChunk{
@@ -411,7 +531,7 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 			if chunk.Finish == "stop" {
 				latency := int(time.Since(start).Milliseconds())
 
-				// Estimate token counts (rough: ~4 chars per token for English, ~2 for Chinese)
+				// Estimate token counts
 				inputTokens := estimateTokens(adapterMsgs)
 				outputTokens := estimateTokensString(fullContent)
 
@@ -620,7 +740,7 @@ func generateTitle(content string) string {
 func estimateTokens(msgs []adapter.Message) int {
 	total := 0
 	for _, msg := range msgs {
-		total += len(msg.Content) + len(msg.Role) + 4 // overhead
+		total += adapter.GetContentLength(msg) + len(msg.Role) + 4 // overhead
 	}
 	// Rough: ~4 chars per token
 	return total / 4
@@ -629,4 +749,25 @@ func estimateTokens(msgs []adapter.Message) int {
 // estimateTokensString estimates token count from a string.
 func estimateTokensString(content string) int {
 	return len(content) / 4
+}
+
+// imageToBase64 downloads an image from MinIO and returns a data URL.
+func (s *ChatService) imageToBase64(ctx context.Context, att *domain.Attachment) (string, error) {
+	if s.minioCli == nil {
+		return att.StorageURL, nil // fallback to URL
+	}
+
+	reader, err := s.minioCli.Download(ctx, "chat", att.StorageKey)
+	if err != nil {
+		return att.StorageURL, nil // fallback
+	}
+	defer reader.Close()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return att.StorageURL, nil
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(data)
+	return fmt.Sprintf("data:%s;base64,%s", att.MimeType, encoded), nil
 }

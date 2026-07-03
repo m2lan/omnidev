@@ -215,7 +215,7 @@ func (a *AnthropicAdapter) CountTokens(model string, messages []Message) (int, e
 	// Rough estimation: ~4 chars per token
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4
+		totalChars += GetContentLength(msg) + len(msg.Role) + 4
 	}
 	return totalChars / 4, nil
 }
@@ -233,7 +233,7 @@ func (a *AnthropicAdapter) buildRequest(req *ChatRequest, stream bool) map[strin
 
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
-			systemPrompt = msg.Content
+			systemPrompt = GetTextContent(msg)
 			continue
 		}
 		messages = append(messages, map[string]interface{}{

@@ -252,18 +252,41 @@ gen-all: gen-proto gen-wire gen-swagger ## Generate all code
 # Database
 # ==============================================================================
 
+DB_URL := postgres://omnidev:omnidev@localhost:5432/omnidev?sslmode=disable
+MIGRATE_SERVICES := user chat rag agent mcp workflow deploy billing notification
+
 .PHONY: db-migrate
-db-migrate: ## Run database migrations
-	@echo "Running migrations..."
-	migrate -path apps/services/user/migrations -database "postgres://omnidev:omnidev@localhost:5432/omnidev?sslmode=disable" up
+db-migrate: ## Run all database migrations
+	@echo "Running migrations for all services..."
+	@for svc in $(MIGRATE_SERVICES); do \
+		if [ -d "apps/services/$$svc/migrations" ]; then \
+			echo "Migrating $$svc..."; \
+			migrate -path apps/services/$$svc/migrations -database "$(DB_URL)" up 2>/dev/null || true; \
+		fi \
+	done
+	@echo "All migrations complete!"
+
+.PHONY: db-migrate-%
+db-migrate-%: ## Run migrations for specific service (e.g., make db-migrate-chat)
+	@echo "Running migrations for $*..."
+	migrate -path apps/services/$*/migrations -database "$(DB_URL)" up
 
 .PHONY: db-migrate-down
-db-migrate-down: ## Rollback database migrations
-	migrate -path apps/services/user/migrations -database "postgres://omnidev:omnidev@localhost:5432/omnidev?sslmode=disable" down 1
+db-migrate-down: ## Rollback last migration for all services
+	@for svc in $(MIGRATE_SERVICES); do \
+		if [ -d "apps/services/$$svc/migrations" ]; then \
+			echo "Rolling back $$svc..."; \
+			migrate -path apps/services/$$svc/migrations -database "$(DB_URL)" down 1 2>/dev/null || true; \
+		fi \
+	done
+
+.PHONY: db-migrate-down-%
+db-migrate-down-%: ## Rollback last migration for specific service (e.g., make db-migrate-down-chat)
+	migrate -path apps/services/$*/migrations -database "$(DB_URL)" down 1
 
 .PHONY: db-migrate-create
-db-migrate-create: ## Create new migration (usage: make db-migrate-create NAME=create_xxx)
-	migrate create -ext sql -dir apps/services/user/migrations -seq $(NAME)
+db-migrate-create: ## Create new migration (usage: make db-migrate-create SVC=chat NAME=create_xxx)
+	migrate create -ext sql -dir apps/services/$(SVC)/migrations -seq $(NAME)
 
 .PHONY: db-seed
 db-seed: ## Seed database with test data

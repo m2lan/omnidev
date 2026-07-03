@@ -20,10 +20,62 @@ type ChatRequest struct {
 
 // Message represents a chat message.
 type Message struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"` // string or []ContentPart
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+}
+
+// ContentPart represents a part of multimodal content.
+type ContentPart struct {
+	Type     string    `json:"type"`                // "text" or "image_url"
+	Text     string    `json:"text,omitempty"`      // for type="text"
+	ImageURL *ImageURL `json:"image_url,omitempty"` // for type="image_url"
+}
+
+// ImageURL represents an image URL with detail level.
+type ImageURL struct {
+	URL    string `json:"url"`
+	Detail string `json:"detail,omitempty"` // "low", "high", "auto"
+}
+
+// NewTextMessage creates a simple text message.
+func NewTextMessage(role, content string) Message {
+	return Message{Role: role, Content: content}
+}
+
+// NewMultimodalMessage creates a multimodal message with text and images.
+func NewMultimodalMessage(role, text string, imageURLs []string) Message {
+	parts := []ContentPart{{Type: "text", Text: text}}
+	for _, url := range imageURLs {
+		parts = append(parts, ContentPart{
+			Type:     "image_url",
+			ImageURL: &ImageURL{URL: url, Detail: "auto"},
+		})
+	}
+	return Message{Role: role, Content: parts}
+}
+
+// GetTextContent extracts text content from a message (handles both string and multimodal).
+func GetTextContent(msg Message) string {
+	switch v := msg.Content.(type) {
+	case string:
+		return v
+	case []ContentPart:
+		for _, part := range v {
+			if part.Type == "text" {
+				return part.Text
+			}
+		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// GetContentLength returns the approximate character length of message content.
+func GetContentLength(msg Message) int {
+	return len(GetTextContent(msg))
 }
 
 // Tool represents a function tool.

@@ -53,8 +53,8 @@ export default function ChatPage() {
     await deleteConversation(id);
   };
 
-  const handleSendMessage = async (content: string) => {
-    await sendMessage(content);
+  const handleSendMessage = async (content: string, attachmentIds?: string[], attachments?: import("@/lib/api/client").Attachment[]) => {
+    await sendMessage(content, attachmentIds, attachments);
   };
 
   return (

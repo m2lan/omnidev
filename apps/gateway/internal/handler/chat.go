@@ -216,9 +216,13 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		return
 	}
 
-	if input.Content == "" {
-		chatBadRequest(c, "content is required")
+	// Allow empty content if there are attachments
+	if input.Content == "" && len(input.AttachmentIDs) == 0 {
+		chatBadRequest(c, "content or attachments required")
 		return
+	}
+	if input.Content == "" {
+		input.Content = "(file attachment)"
 	}
 
 	userMsg, assistantMsg, err := h.chatSvc.SendMessage(c.Request.Context(), userID, convID, &input)
@@ -256,9 +260,13 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 		return
 	}
 
-	if input.Content == "" {
-		chatBadRequest(c, "content is required")
+	// Allow empty content if there are attachments
+	if input.Content == "" && len(input.AttachmentIDs) == 0 {
+		chatBadRequest(c, "content or attachments required")
 		return
+	}
+	if input.Content == "" {
+		input.Content = "(file attachment)"
 	}
 
 	stream, userMsg, err := h.chatSvc.StreamMessage(c.Request.Context(), userID, convID, &input)

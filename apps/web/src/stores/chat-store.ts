@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api, type Conversation, type Message } from "@/lib/api/client";
+import { api, type Conversation, type Message, type Attachment } from "@/lib/api/client";
 
 interface StreamingState {
   content: string;
@@ -24,7 +24,7 @@ interface ChatState {
   createConversation: (title?: string) => Promise<Conversation>;
   setActiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, attachmentIds?: string[], attachments?: Attachment[]) => Promise<void>;
   setSelectedModel: (model: string) => void;
   clearError: () => void;
   resetSending: () => void;
@@ -145,7 +145,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content: string) => {
+  sendMessage: async (content: string, attachmentIds?: string[], attachments?: Attachment[]) => {
     let { activeConversationId } = get();
     const { selectedModel } = get();
 
@@ -177,6 +177,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversation_id: conversationId,
       role: "user",
       content,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
       created_at: new Date().toISOString(),
     };
     set((state) => {
@@ -194,6 +195,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversationId,
       content,
       selectedModel || undefined,
+      attachmentIds,
       // onChunk
       (delta: string, type?: string) => {
         if (type === "reasoning") {
@@ -213,7 +215,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       (msg: Message) => {
         set((state) => {
           const cached = state.messagesCache[conversationId] || [];
-          const newMessages = cached.map((m) => (m.id === userMsg.id ? msg : m));
+          const newMessages = cached.map((m) => {
+            if (m.id === userMsg.id) {
+              // Preserve attachments from the optimistic message
+              return { ...msg, attachments: m.attachments || msg.attachments };
+            }
+            return m;
+          });
           return {
             messages: state.activeConversationId === conversationId ? newMessages : state.messages,
             messagesCache: { ...state.messagesCache, [conversationId]: newMessages },

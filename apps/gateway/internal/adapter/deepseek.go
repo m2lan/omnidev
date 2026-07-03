@@ -133,7 +133,7 @@ func (a *DeepSeekAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-c
 func (a *DeepSeekAdapter) CountTokens(model string, messages []Message) (int, error) {
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4
+		totalChars += GetContentLength(msg) + len(msg.Role) + 4
 	}
 	return totalChars / 4, nil
 }

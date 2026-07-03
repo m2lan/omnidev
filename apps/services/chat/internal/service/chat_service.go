@@ -24,6 +24,7 @@ type ChatService struct {
 	convRepo      repository.ConversationRepository
 	msgRepo       repository.MessageRepository
 	modelRepo     repository.ModelRepository
+	attRepo       repository.AttachmentRepository
 	adapters      *adapter.Registry
 	cache         *cache.Redis
 	defaultModel  string
@@ -34,6 +35,7 @@ func NewChatService(
 	convRepo repository.ConversationRepository,
 	msgRepo repository.MessageRepository,
 	modelRepo repository.ModelRepository,
+	attRepo repository.AttachmentRepository,
 	adapters *adapter.Registry,
 	cache *cache.Redis,
 	defaultModel string,
@@ -42,6 +44,7 @@ func NewChatService(
 		convRepo:     convRepo,
 		msgRepo:      msgRepo,
 		modelRepo:    modelRepo,
+		attRepo:      attRepo,
 		adapters:     adapters,
 		cache:        cache,
 		defaultModel: defaultModel,
@@ -199,13 +202,31 @@ func (s *ChatService) ListMessages(ctx context.Context, userID, convID uuid.UUID
 	}
 
 	offset := (page - 1) * pageSize
-	return s.msgRepo.ListByConversation(ctx, convID, offset, pageSize)
+	messages, total, err := s.msgRepo.ListByConversation(ctx, convID, offset, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Load attachments for each message
+	for _, msg := range messages {
+		attachments, err := s.attRepo.ListByMessage(ctx, msg.ID.String())
+		if err != nil {
+			continue // Skip on error, don't fail the whole request
+		}
+		msg.Attachments = make([]domain.Attachment, len(attachments))
+		for i, att := range attachments {
+			msg.Attachments[i] = *att
+		}
+	}
+
+	return messages, total, nil
 }
 
 // SendMessageInput defines the input for sending a message.
 type SendMessageInput struct {
-	Content string `json:"content" validate:"required"`
-	ModelID string `json:"model_id"`
+	Content       string   `json:"content" validate:"required"`
+	ModelID       string   `json:"model_id"`
+	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 }
 
 // SendMessage sends a message and returns the AI response.
@@ -240,6 +261,13 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 		return nil, nil, appErr.Wrap(err, "failed to save user message")
 	}
 
+	// Associate attachments with message
+	if len(input.AttachmentIDs) > 0 {
+		if err := s.attRepo.UpdateMessageID(ctx, input.AttachmentIDs, userMsg.ID.String()); err != nil {
+			logger.Log.Warn("failed to associate attachments", zap.Error(err))
+		}
+	}
+
 	// Get recent messages for context
 	recentMsgs, err := s.msgRepo.GetRecentMessages(ctx, convID, 20)
 	if err != nil {
@@ -249,16 +277,23 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 	// Build adapter messages
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    "system",
-			Content: *conv.SystemPrompt,
-		})
+		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		})
+		// Check if message has image attachments
+		attachments, _ := s.attRepo.ListByMessage(ctx, msg.ID.String())
+		var imageURLs []string
+		for _, att := range attachments {
+			if att.IsImage() {
+				imageURLs = append(imageURLs, att.StorageURL)
+			}
+		}
+
+		if len(imageURLs) > 0 {
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageURLs))
+		} else {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+		}
 	}
 
 	// Get adapter
@@ -341,6 +376,13 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		return nil, nil, appErr.Wrap(err, "failed to save user message")
 	}
 
+	// Associate attachments with message
+	if len(input.AttachmentIDs) > 0 {
+		if err := s.attRepo.UpdateMessageID(ctx, input.AttachmentIDs, userMsg.ID.String()); err != nil {
+			logger.Log.Warn("failed to associate attachments", zap.Error(err))
+		}
+	}
+
 	// Get context
 	recentMsgs, err := s.msgRepo.GetRecentMessages(ctx, convID, 20)
 	if err != nil {
@@ -349,16 +391,23 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    "system",
-			Content: *conv.SystemPrompt,
-		})
+		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 	for _, msg := range recentMsgs {
-		adapterMsgs = append(adapterMsgs, adapter.Message{
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		})
+		// Check if message has image attachments
+		attachments, _ := s.attRepo.ListByMessage(ctx, msg.ID.String())
+		var imageURLs []string
+		for _, att := range attachments {
+			if att.IsImage() {
+				imageURLs = append(imageURLs, att.StorageURL)
+			}
+		}
+
+		if len(imageURLs) > 0 {
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), msg.Content, imageURLs))
+		} else {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), msg.Content))
+		}
 	}
 
 	aiAdapter, err := s.adapters.GetForModel(modelID)

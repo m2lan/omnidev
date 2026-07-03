@@ -78,6 +78,7 @@ type Message struct {
 	ToolCallID     *string            `json:"tool_call_id,omitempty" db:"tool_call_id"`
 	ParentID       *uuid.UUID         `json:"parent_id,omitempty" db:"parent_id"`
 	Metadata       map[string]interface{} `json:"metadata" db:"metadata"`
+	Attachments    []Attachment       `json:"attachments,omitempty" db:"-"`
 	CreatedAt      time.Time          `json:"created_at" db:"created_at"`
 }
 
@@ -111,4 +112,39 @@ type ChatChunk struct {
 	TokenInput   int    `json:"token_input,omitempty"`
 	TokenOutput  int    `json:"token_output,omitempty"`
 	ModelID      string `json:"model_id,omitempty"`
+}
+
+// Attachment represents a file attachment.
+type Attachment struct {
+	ID             uuid.UUID              `json:"id" db:"id"`
+	UserID         uuid.UUID              `json:"user_id" db:"user_id"`
+	ConversationID *uuid.UUID             `json:"conversation_id,omitempty" db:"conversation_id"`
+	MessageID      *uuid.UUID             `json:"message_id,omitempty" db:"message_id"`
+	Filename       string                 `json:"filename" db:"filename"`
+	MimeType       string                 `json:"mime_type" db:"mime_type"`
+	FileSize       int64                  `json:"file_size" db:"file_size"`
+	StorageKey     string                 `json:"storage_key" db:"storage_key"`
+	StorageURL     string                 `json:"storage_url" db:"storage_url"`
+	ThumbnailKey   *string                `json:"thumbnail_key,omitempty" db:"thumbnail_key"`
+	Width          *int                   `json:"width,omitempty" db:"width"`
+	Height         *int                   `json:"height,omitempty" db:"height"`
+	Metadata       map[string]interface{} `json:"metadata" db:"metadata"`
+	CreatedAt      time.Time              `json:"created_at" db:"created_at"`
+}
+
+// IsImage returns true if the attachment is an image type.
+func (a *Attachment) IsImage() bool {
+	return len(a.MimeType) >= 6 && a.MimeType[:6] == "image/"
+}
+
+// IsDocument returns true if the attachment is a document type.
+func (a *Attachment) IsDocument() bool {
+	switch a.MimeType {
+	case "application/pdf",
+		"application/msword",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"text/plain", "text/markdown":
+		return true
+	}
+	return false
 }

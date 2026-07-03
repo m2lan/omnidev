@@ -237,6 +237,7 @@ class ApiClient {
     conversationId: string,
     content: string,
     modelId: string | undefined,
+    attachmentIds: string[] | undefined,
     onChunk: (delta: string, type?: string) => void,
     onUserMessage: (msg: Message) => void,
     onComplete: (assistantMsg: Message) => void,
@@ -251,12 +252,18 @@ class ApiClient {
     }
 
     try {
+      const requestBody = {
+        content,
+        model_id: modelId,
+        attachment_ids: attachmentIds,
+      };
+      console.log("Sending stream request:", requestBody);
       const response = await fetch(
         `${this.baseUrl}/api/v1/conversations/${conversationId}/messages/stream`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({ content, model_id: modelId }),
+          body: JSON.stringify(requestBody),
         }
       );
 
@@ -352,6 +359,44 @@ class ApiClient {
   // Models
   async listModels() {
     return this.get<ApiResponse<Model[]>>("/api/v1/models");
+  }
+
+  // Upload
+  async uploadFile(file: File): Promise<ApiResponse<Attachment>> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${this.baseUrl}/api/v1/upload`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: { message: response.statusText },
+      }));
+      throw new ApiError(
+        error.error?.message || "Upload failed",
+        error.error?.code || response.status
+      );
+    }
+
+    return response.json();
+  }
+
+  async deleteAttachment(id: string) {
+    return this.delete<ApiResponse<void>>(`/api/v1/attachments/${id}`);
+  }
+
+  async getAttachmentUrl(id: string) {
+    return this.get<ApiResponse<{ url: string }>>(`/api/v1/attachments/${id}/url`);
   }
 
   // User AI Configs
@@ -463,6 +508,21 @@ export interface Conversation {
   updated_at: string;
 }
 
+export interface Attachment {
+  id: string;
+  user_id: string;
+  conversation_id?: string;
+  message_id?: string;
+  filename: string;
+  mime_type: string;
+  file_size: number;
+  storage_url: string;
+  thumbnail_key?: string;
+  width?: number;
+  height?: number;
+  created_at: string;
+}
+
 export interface Message {
   id: string;
   conversation_id: string;
@@ -472,6 +532,7 @@ export interface Message {
   token_input?: number;
   token_output?: number;
   latency_ms?: number;
+  attachments?: Attachment[];
   created_at: string;
 }
 

@@ -235,7 +235,7 @@ func (a *OpenAIAdapter) CountTokens(model string, messages []Message) (int, erro
 	// Rough estimation: ~4 chars per token
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4 // overhead
+		totalChars += GetContentLength(msg) + len(msg.Role) + 4 // overhead
 	}
 	return totalChars / 4, nil
 }
