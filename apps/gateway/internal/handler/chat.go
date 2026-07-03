@@ -280,8 +280,10 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 
 	// Stream AI response
 	var fullContent string
+	completed := false
 	for chunk := range stream {
-		if chunk.FinishReason == "stop" {
+		if chunk.FinishReason == "stop" && !completed {
+			completed = true
 			// Send complete assistant message
 			completeMsg := map[string]interface{}{
 				"id":              chunk.ID,
@@ -296,7 +298,7 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 			msgData, _ := json.Marshal(completeMsg)
 			fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", msgData)
 			c.Writer.Flush()
-		} else {
+		} else if chunk.FinishReason != "stop" {
 			fullContent += chunk.Delta
 			data, _ := json.Marshal(chunk)
 			fmt.Fprintf(c.Writer, "data: %s\n\n", data)

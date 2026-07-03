@@ -318,13 +318,6 @@ class ApiClient {
                 currentEvent = "";
                 continue;
               }
-
-              // Check for complete message (fallback)
-              if (parsed.id && parsed.role === "assistant") {
-                onComplete(parsed);
-                currentEvent = "";
-                continue;
-              }
             } catch {
               // Ignore parse errors
             }

@@ -57,7 +57,12 @@ export function ChatArea({
     const content = input.trim();
     setInput("");
     onClearError();
-    await onSend(content);
+    try {
+      await onSend(content);
+    } catch {
+      // Restore input on error so user can retry
+      setInput(content);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

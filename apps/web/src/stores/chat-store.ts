@@ -1,17 +1,23 @@
 import { create } from "zustand";
 import { api, type Conversation, type Message } from "@/lib/api/client";
 
+interface StreamingState {
+  content: string;
+  reasoning: string;
+}
+
 interface ChatState {
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: Message[];
+  messagesCache: Record<string, Message[]>;
   isLoading: boolean;
-  isSending: boolean;
-  sendingConversationId: string | null;
-  streamingContent: string;
-  streamingReasoning: string;
   error: string | null;
   selectedModel: string;
+
+  // Per-conversation streaming state
+  streamingStates: Record<string, StreamingState>;
+  sendingConversationIds: Set<string>;
 
   // Actions
   fetchConversations: () => Promise<void>;
@@ -28,13 +34,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   messages: [],
+  messagesCache: {},
   isLoading: false,
-  isSending: false,
-  sendingConversationId: null,
-  streamingContent: "",
-  streamingReasoning: "",
   error: null,
   selectedModel: "",
+  streamingStates: {},
+  sendingConversationIds: new Set(),
+
+  // Computed: is the active conversation sending?
+  get isActiveSending() {
+    const state = get();
+    return state.activeConversationId ? state.sendingConversationIds.has(state.activeConversationId) : false;
+  },
+
+  // Computed: streaming content for active conversation
+  get activeStreamingContent() {
+    const state = get();
+    return state.activeConversationId ? (state.streamingStates[state.activeConversationId]?.content || "") : "";
+  },
+
+  get activeStreamingReasoning() {
+    const state = get();
+    return state.activeConversationId ? (state.streamingStates[state.activeConversationId]?.reasoning || "") : "";
+  },
 
   fetchConversations: async () => {
     set({ isLoading: true, error: null });
@@ -69,19 +91,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setActiveConversation: async (id: string) => {
-    const { sendingConversationId } = get();
+    const { activeConversationId, messages } = get();
+
+    // Save current messages to cache before switching
+    if (activeConversationId) {
+      set((state) => ({
+        messagesCache: { ...state.messagesCache, [activeConversationId]: messages },
+      }));
+    }
+
     set({
       activeConversationId: id,
       messages: [],
       isLoading: true,
       error: null,
-      // Clear streaming content if switching to a different conversation
-      streamingContent: sendingConversationId === id ? get().streamingContent : "",
-      streamingReasoning: sendingConversationId === id ? get().streamingReasoning : "",
     });
+
+    // Try cache first, then server
+    const cached = get().messagesCache[id];
+    if (cached) {
+      set({ messages: cached, isLoading: false });
+      return;
+    }
+
     try {
-      // Only load last 10 messages for performance
-      const { data } = await api.listMessages(id, { page_size: 10 });
+      const { data } = await api.listMessages(id, { page_size: 50 });
       set({ messages: data || [], isLoading: false });
     } catch (err) {
       set({
@@ -100,7 +134,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           state.activeConversationId === id
             ? conversations[0]?.id || null
             : state.activeConversationId;
-        return { conversations, activeConversationId };
+        const { [id]: _, ...messagesCache } = state.messagesCache;
+        const { [id]: __, ...streamingStates } = state.streamingStates;
+        const sendingConversationIds = new Set(state.sendingConversationIds);
+        sendingConversationIds.delete(id);
+        return { conversations, activeConversationId, messagesCache, streamingStates, sendingConversationIds };
       });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Failed to delete conversation" });
@@ -122,7 +160,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
 
     const conversationId = activeConversationId;
-    set({ isSending: true, sendingConversationId: conversationId, error: null, streamingContent: "", streamingReasoning: "" });
+
+    // Mark this conversation as sending
+    set((state) => ({
+      sendingConversationIds: new Set([...state.sendingConversationIds, conversationId]),
+      streamingStates: {
+        ...state.streamingStates,
+        [conversationId]: { content: "", reasoning: "" },
+      },
+      error: null,
+    }));
 
     // Optimistic: add user message
     const userMsg: Message = {
@@ -132,7 +179,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content,
       created_at: new Date().toISOString(),
     };
-    set((state) => ({ messages: [...state.messages, userMsg] }));
+    set((state) => {
+      const newMessages = [...state.messages, userMsg];
+      return {
+        messages: state.activeConversationId === conversationId ? newMessages : state.messages,
+        messagesCache: { ...state.messagesCache, [conversationId]: newMessages },
+      };
+    });
 
     let fullContent = "";
     let fullReasoning = "";
@@ -148,45 +201,58 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } else {
           fullContent += delta;
         }
-        // Only update streaming content if still on same conversation
-        if (get().activeConversationId === conversationId) {
-          set({ streamingContent: fullContent, streamingReasoning: fullReasoning });
-        }
+        // Update this conversation's streaming state
+        set((state) => ({
+          streamingStates: {
+            ...state.streamingStates,
+            [conversationId]: { content: fullContent, reasoning: fullReasoning },
+          },
+        }));
       },
       // onUserMessage
       (msg: Message) => {
-        set((state) => ({
-          messages: state.messages.map((m) =>
-            m.id === userMsg.id ? msg : m
-          ),
-        }));
+        set((state) => {
+          const cached = state.messagesCache[conversationId] || [];
+          const newMessages = cached.map((m) => (m.id === userMsg.id ? msg : m));
+          return {
+            messages: state.activeConversationId === conversationId ? newMessages : state.messages,
+            messagesCache: { ...state.messagesCache, [conversationId]: newMessages },
+          };
+        });
       },
       // onComplete
       (assistantMsg: Message) => {
-        set((state) => ({
-          messages: state.activeConversationId === conversationId
-            ? [...state.messages, assistantMsg]
-            : state.messages,
-          isSending: state.sendingConversationId === conversationId ? false : state.isSending,
-          sendingConversationId: state.sendingConversationId === conversationId ? null : state.sendingConversationId,
-          streamingContent: state.sendingConversationId === conversationId ? "" : state.streamingContent,
-          streamingReasoning: state.sendingConversationId === conversationId ? "" : state.streamingReasoning,
-        }));
-        // Refresh conversation list
-        get().fetchConversations();
+        set((state) => {
+          const cached = state.messagesCache[conversationId] || [];
+          const finalMessages = [...cached, assistantMsg];
+
+          // Remove from sending set and clear streaming state
+          const sendingConversationIds = new Set(state.sendingConversationIds);
+          sendingConversationIds.delete(conversationId);
+          const { [conversationId]: _, ...streamingStates } = state.streamingStates;
+
+          return {
+            messages: state.activeConversationId === conversationId ? finalMessages : state.messages,
+            messagesCache: { ...state.messagesCache, [conversationId]: finalMessages },
+            sendingConversationIds,
+            streamingStates,
+          };
+        });
       },
       // onError
       (errorMsg: string) => {
-        set((state) => ({
-          messages: state.activeConversationId === conversationId
-            ? state.messages.filter((m) => m.id !== userMsg.id)
-            : state.messages,
-          isSending: state.sendingConversationId === conversationId ? false : state.isSending,
-          sendingConversationId: state.sendingConversationId === conversationId ? null : state.sendingConversationId,
-          streamingContent: state.sendingConversationId === conversationId ? "" : state.streamingContent,
-          streamingReasoning: state.sendingConversationId === conversationId ? "" : state.streamingReasoning,
-          error: errorMsg,
-        }));
+        set((state) => {
+          // Remove from sending set and clear streaming state
+          const sendingConversationIds = new Set(state.sendingConversationIds);
+          sendingConversationIds.delete(conversationId);
+          const { [conversationId]: _, ...streamingStates } = state.streamingStates;
+
+          return {
+            sendingConversationIds,
+            streamingStates,
+            error: errorMsg,
+          };
+        });
       }
     );
   },
@@ -200,6 +266,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   resetSending: () => {
-    set({ isSending: false, sendingConversationId: null, streamingContent: "", streamingReasoning: "" });
+    set({ sendingConversationIds: new Set(), streamingStates: {} });
   },
 }));

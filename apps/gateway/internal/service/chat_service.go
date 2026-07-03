@@ -397,12 +397,15 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		var fullContent string
 		start := time.Now()
 
+
 		for chunk := range stream {
 			fullContent += chunk.Delta
 			ch <- domain.ChatChunk{
-				ID:      chunk.ID,
-				Delta:   chunk.Delta,
-				ModelID: modelID,
+				ID:           chunk.ID,
+				Delta:        chunk.Delta,
+				Type:         chunk.Type,
+				FinishReason: chunk.Finish,
+				ModelID:      modelID,
 			}
 
 			if chunk.Finish == "stop" {

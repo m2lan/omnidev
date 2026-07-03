@@ -190,8 +190,11 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 			}
 
 			if len(chunk.Choices) > 0 {
-				delta := chunk.Choices[0].Delta
-				// Stream reasoning content with prefix, then actual content
+				choice := chunk.Choices[0]
+				delta := choice.Delta
+				finishReason := choice.FinishReason
+
+				// Stream reasoning content
 				if delta.ReasoningContent != "" {
 					ch <- ChatStreamChunk{
 						ID:     chunk.ID,
@@ -200,12 +203,21 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 						Type:   "reasoning",
 					}
 				}
+
+				// Stream content (with finish reason if present)
 				if delta.Content != "" {
 					ch <- ChatStreamChunk{
 						ID:     chunk.ID,
 						Delta:  delta.Content,
 						Model:  chunk.Model,
-						Finish: chunk.Choices[0].FinishReason,
+						Finish: finishReason,
+					}
+				} else if finishReason != "" {
+					// Send finish signal only if no content was sent
+					ch <- ChatStreamChunk{
+						ID:     chunk.ID,
+						Model:  chunk.Model,
+						Finish: finishReason,
 					}
 				}
 			}

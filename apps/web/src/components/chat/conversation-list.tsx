@@ -9,6 +9,7 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   isLoading: boolean;
+  sendingIds?: Set<string>;
 }
 
 export function ConversationList({
@@ -17,6 +18,7 @@ export function ConversationList({
   onSelect,
   onDelete,
   isLoading,
+  sendingIds,
 }: ConversationListProps) {
   if (isLoading) {
     return (
@@ -66,8 +68,11 @@ export function ConversationList({
           >
             <div className="flex items-start justify-between">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
+                <p className="text-sm font-medium truncate flex items-center gap-1.5">
                   {conv.title || "New Conversation"}
+                  {sendingIds?.has(conv.id) && (
+                    <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {conv.message_count} messages • {formatRelativeTime(conv.updated_at)}

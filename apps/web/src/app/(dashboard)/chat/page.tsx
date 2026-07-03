@@ -12,12 +12,10 @@ export default function ChatPage() {
     activeConversationId,
     messages,
     isLoading,
-    isSending,
-    sendingConversationId,
-    streamingContent,
-    streamingReasoning,
     error,
     selectedModel,
+    sendingConversationIds,
+    streamingStates,
     fetchConversations,
     createConversation,
     setActiveConversation,
@@ -28,8 +26,11 @@ export default function ChatPage() {
     resetSending,
   } = useChatStore();
 
-  // Only show sending state if the active conversation is the one being sent
-  const isActiveSending = isSending && sendingConversationId === activeConversationId;
+  // Compute per-conversation states
+  const isActiveSending = activeConversationId ? sendingConversationIds.has(activeConversationId) : false;
+  const activeStreaming = activeConversationId ? streamingStates[activeConversationId] : undefined;
+  const streamingContent = activeStreaming?.content || "";
+  const streamingReasoning = activeStreaming?.reasoning || "";
 
   useEffect(() => {
     resetSending();
@@ -37,7 +38,6 @@ export default function ChatPage() {
   }, [fetchConversations, resetSending]);
 
   const handleNewChat = () => {
-    // Just reset to empty state, conversation will be created on first message
     useChatStore.setState({
       activeConversationId: null,
       messages: [],
@@ -72,6 +72,7 @@ export default function ChatPage() {
           onSelect={handleSelectConversation}
           onDelete={handleDeleteConversation}
           isLoading={isLoading}
+          sendingIds={sendingConversationIds}
         />
       </div>
 
@@ -81,8 +82,8 @@ export default function ChatPage() {
           messages={messages}
           isLoading={isLoading}
           isSending={isActiveSending}
-          streamingContent={isActiveSending ? streamingContent : ""}
-          streamingReasoning={isActiveSending ? streamingReasoning : ""}
+          streamingContent={streamingContent}
+          streamingReasoning={streamingReasoning}
           error={error}
           selectedModel={selectedModel}
           onSend={handleSendMessage}
