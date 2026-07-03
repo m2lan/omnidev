@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -30,22 +32,39 @@ func NewUserAIConfigProxyHandler(_ string, configRepo repository.UserAIConfigRep
 	}
 }
 
+// ModelConfigInput represents a model configuration.
+type ModelConfigInput struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
+// modelIDs extracts model IDs from ModelConfigInput slice.
+func modelIDs(models []ModelConfigInput) []string {
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	return ids
+}
+
 // CreateConfigInput defines the input for creating an AI config.
 type CreateConfigInput struct {
-	Provider string   `json:"provider" binding:"required"`
-	APIKey   string   `json:"api_key" binding:"required"`
-	BaseURL  string   `json:"base_url" binding:"required"`
-	Protocol string   `json:"protocol" binding:"required"`
-	Models   []string `json:"models"`
+	Provider    string            `json:"provider" binding:"required"`
+	DisplayName string            `json:"display_name"`
+	APIKey      string            `json:"api_key" binding:"required"`
+	BaseURL     string            `json:"base_url" binding:"required"`
+	Protocol    string            `json:"protocol" binding:"required"`
+	Models      []ModelConfigInput `json:"models"`
 }
 
 // UpdateConfigInput defines the input for updating an AI config.
 type UpdateConfigInput struct {
-	Provider string   `json:"provider"`
-	APIKey   string   `json:"api_key"`
-	BaseURL  string   `json:"base_url"`
-	Protocol string   `json:"protocol"`
-	Models   []string `json:"models"`
+	Provider    string            `json:"provider"`
+	DisplayName string            `json:"display_name"`
+	APIKey      string            `json:"api_key"`
+	BaseURL     string            `json:"base_url"`
+	Protocol    string            `json:"protocol"`
+	Models      []ModelConfigInput `json:"models"`
 }
 
 // Create handles POST /api/v1/user/ai-configs
@@ -79,22 +98,51 @@ func (h *UserAIConfigHandler) Create(c *gin.Context) {
 		apiKey = encrypted
 	}
 
+	displayName := input.DisplayName
+	if displayName == "" {
+		displayName = input.Provider
+	}
+
 	cfg := &adapter.UserAIConfig{
-		Provider: input.Provider,
-		APIKey:   apiKey,
-		BaseURL:  input.BaseURL,
-		Protocol: input.Protocol,
-		Models:   input.Models,
+		Provider:    input.Provider,
+		DisplayName: displayName,
+		APIKey:      apiKey,
+		BaseURL:     input.BaseURL,
+		Protocol:    input.Protocol,
+		Models:      modelIDs(input.Models),
 	}
 
 	if err := h.configRepo.Create(c.Request.Context(), cfg, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": gin.H{"code": 500, "message": "failed to create config"},
+			"error": gin.H{"code": 500, "message": "failed to create config", "detail": err.Error()},
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"data": cfg})
+	// Return response matching frontend type
+	type modelConfig struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}
+	models := make([]modelConfig, 0, len(cfg.Models))
+	for _, m := range cfg.Models {
+		models = append(models, modelConfig{ID: m, DisplayName: m})
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"data": gin.H{
+		"id":           cfg.ID,
+		"user_id":      userID,
+		"provider":     cfg.Provider,
+		"display_name": cfg.DisplayName,
+		"api_key_mask": "***",
+		"base_url":     cfg.BaseURL,
+		"protocol":     cfg.Protocol,
+		"models":       models,
+		"is_default":   false,
+		"is_active":    true,
+		"created_at":   cfg.CreatedAt,
+		"updated_at":   cfg.UpdatedAt,
+	}})
 }
 
 // List handles GET /api/v1/user/ai-configs
@@ -115,37 +163,60 @@ func (h *UserAIConfigHandler) List(c *gin.Context) {
 		return
 	}
 
-	// Decrypt API keys for display (mask them)
+	// Response structure matching frontend UserAIConfig type
+	type modelConfig struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}
 	type configResponse struct {
-		ID       uuid.UUID `json:"id"`
-		Provider string    `json:"provider"`
-		APIKey   string    `json:"api_key"`
-		BaseURL  string    `json:"base_url"`
-		Protocol string    `json:"protocol"`
-		Models   []string  `json:"models"`
+		ID          uuid.UUID    `json:"id"`
+		UserID      uuid.UUID    `json:"user_id"`
+		Provider    string       `json:"provider"`
+		DisplayName string       `json:"display_name"`
+		APIKeyMask  string       `json:"api_key_mask"`
+		BaseURL     string       `json:"base_url"`
+		Protocol    string       `json:"protocol"`
+		Models      []modelConfig `json:"models"`
+		IsDefault   bool         `json:"is_default"`
+		IsActive    bool         `json:"is_active"`
+		CreatedAt   string       `json:"created_at"`
+		UpdatedAt   string       `json:"updated_at"`
 	}
 
 	result := make([]configResponse, 0, len(configs))
 	for _, cfg := range configs {
-		apiKey := "***"
+		// Mask API key
+		apiKeyMask := "***"
 		if cfg.APIKey != "" && h.encryptor != nil {
 			decrypted, err := h.encryptor.Decrypt(cfg.APIKey)
 			if err == nil && len(decrypted) > 4 {
-				apiKey = decrypted[:4] + "***" + decrypted[len(decrypted)-4:]
+				apiKeyMask = decrypted[:4] + "***" + decrypted[len(decrypted)-4:]
 			}
 		} else if cfg.APIKey != "" {
-			// No encryptor, just mask the stored key
 			if len(cfg.APIKey) > 4 {
-				apiKey = cfg.APIKey[:4] + "***"
+				apiKeyMask = cfg.APIKey[:4] + "***"
 			}
 		}
+
+		// Convert models to ModelConfig format
+		models := make([]modelConfig, 0, len(cfg.Models))
+		for _, m := range cfg.Models {
+			models = append(models, modelConfig{ID: m, DisplayName: m})
+		}
+
 		result = append(result, configResponse{
-			ID:       cfg.ID,
-			Provider: cfg.Provider,
-			APIKey:   apiKey,
-			BaseURL:  cfg.BaseURL,
-			Protocol: cfg.Protocol,
-			Models:   cfg.Models,
+			ID:          cfg.ID,
+			UserID:      cfg.UserID,
+			Provider:    cfg.Provider,
+			DisplayName: cfg.DisplayName,
+			APIKeyMask:  apiKeyMask,
+			BaseURL:     cfg.BaseURL,
+			Protocol:    cfg.Protocol,
+			Models:      models,
+			IsDefault:   cfg.IsDefault,
+			IsActive:    cfg.IsActive,
+			CreatedAt:   cfg.CreatedAt,
+			UpdatedAt:   cfg.UpdatedAt,
 		})
 	}
 
@@ -178,7 +249,43 @@ func (h *UserAIConfigHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": cfg})
+	// Mask API key
+	apiKeyMask := "***"
+	if cfg.APIKey != "" && h.encryptor != nil {
+		decrypted, err := h.encryptor.Decrypt(cfg.APIKey)
+		if err == nil && len(decrypted) > 4 {
+			apiKeyMask = decrypted[:4] + "***" + decrypted[len(decrypted)-4:]
+		}
+	} else if cfg.APIKey != "" {
+		if len(cfg.APIKey) > 4 {
+			apiKeyMask = cfg.APIKey[:4] + "***"
+		}
+	}
+
+	// Convert models to ModelConfig format
+	type modelConfig struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}
+	models := make([]modelConfig, 0, len(cfg.Models))
+	for _, m := range cfg.Models {
+		models = append(models, modelConfig{ID: m, DisplayName: m})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id":           cfg.ID,
+		"user_id":      cfg.UserID,
+		"provider":     cfg.Provider,
+		"display_name": cfg.DisplayName,
+		"api_key_mask": apiKeyMask,
+		"base_url":     cfg.BaseURL,
+		"protocol":     cfg.Protocol,
+		"models":       models,
+		"is_default":   cfg.IsDefault,
+		"is_active":    cfg.IsActive,
+		"created_at":   cfg.CreatedAt,
+		"updated_at":   cfg.UpdatedAt,
+	}})
 }
 
 // Update handles PUT /api/v1/user/ai-configs/:id
@@ -220,6 +327,9 @@ func (h *UserAIConfigHandler) Update(c *gin.Context) {
 	if input.Provider != "" {
 		existing.Provider = input.Provider
 	}
+	if input.DisplayName != "" {
+		existing.DisplayName = input.DisplayName
+	}
 	if input.BaseURL != "" {
 		existing.BaseURL = input.BaseURL
 	}
@@ -227,7 +337,7 @@ func (h *UserAIConfigHandler) Update(c *gin.Context) {
 		existing.Protocol = input.Protocol
 	}
 	if input.Models != nil {
-		existing.Models = input.Models
+		existing.Models = modelIDs(input.Models)
 	}
 	if input.APIKey != "" {
 		if h.encryptor != nil {
@@ -251,7 +361,42 @@ func (h *UserAIConfigHandler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": existing})
+	// Mask API key for response
+	apiKeyMask := "***"
+	if existing.APIKey != "" && h.encryptor != nil {
+		decrypted, err := h.encryptor.Decrypt(existing.APIKey)
+		if err == nil && len(decrypted) > 4 {
+			apiKeyMask = decrypted[:4] + "***" + decrypted[len(decrypted)-4:]
+		}
+	} else if existing.APIKey != "" {
+		if len(existing.APIKey) > 4 {
+			apiKeyMask = existing.APIKey[:4] + "***"
+		}
+	}
+
+	type modelConfig struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}
+	models := make([]modelConfig, 0, len(existing.Models))
+	for _, m := range existing.Models {
+		models = append(models, modelConfig{ID: m, DisplayName: m})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"id":           existing.ID,
+		"user_id":      existing.UserID,
+		"provider":     existing.Provider,
+		"display_name": existing.DisplayName,
+		"api_key_mask": apiKeyMask,
+		"base_url":     existing.BaseURL,
+		"protocol":     existing.Protocol,
+		"models":       models,
+		"is_default":   existing.IsDefault,
+		"is_active":    existing.IsActive,
+		"created_at":   existing.CreatedAt,
+		"updated_at":   existing.UpdatedAt,
+	}})
 }
 
 // Delete handles DELETE /api/v1/user/ai-configs/:id
@@ -345,15 +490,54 @@ func (h *UserAIConfigHandler) TestConnection(c *gin.Context) {
 		}
 	}
 
-	// Test connection based on provider
-	// For now, return success if config exists
-	_ = apiKey
+	// Build test URL based on provider and protocol
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
+	var testURL string
+	reqHeaders := map[string]string{
+		"Authorization": "Bearer " + apiKey,
+	}
+
+	switch {
+	case cfg.Protocol == "anthropic":
+		testURL = baseURL + "/v1/models"
+		reqHeaders["x-api-key"] = apiKey
+		reqHeaders["anthropic-version"] = "2023-06-01"
+		delete(reqHeaders, "Authorization")
+	default: // openai protocol
+		testURL = baseURL + "/v1/models"
+	}
+
+	start := time.Now()
+	req, err := http.NewRequestWithContext(c.Request.Context(), "GET", testURL, nil)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{"success": false, "message": "failed to create request", "latency_ms": 0},
+		})
+		return
+	}
+	for k, v := range reqHeaders {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{"success": false, "message": fmt.Sprintf("connection failed: %v", err), "latency_ms": latency},
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		c.JSON(http.StatusOK, gin.H{
+			"data": gin.H{"success": false, "message": fmt.Sprintf("server returned %d", resp.StatusCode), "latency_ms": latency},
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"success": true,
-			"message": "connection test passed",
-		},
+		"data": gin.H{"success": true, "message": "connection test passed", "latency_ms": latency},
 	})
 }
 

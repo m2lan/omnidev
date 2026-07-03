@@ -78,6 +78,16 @@ class ApiClient {
     }
   }
 
+  // Check if JWT token is expired (with 30s buffer)
+  private isTokenExpired(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.exp * 1000 < Date.now() + 30000;
+    } catch {
+      return true;
+    }
+  }
+
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { body, headers: customHeaders, ...rest } = options;
 
@@ -86,7 +96,17 @@ class ApiClient {
       ...(customHeaders as Record<string, string>),
     };
 
-    const token = this.getToken();
+    let token = this.getToken();
+
+    // Proactively refresh if token is about to expire
+    if (token && this.isTokenExpired(token)) {
+      try {
+        token = await this.refreshAccessToken();
+      } catch {
+        // Refresh failed, will get 401 below and redirect
+      }
+    }
+
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }

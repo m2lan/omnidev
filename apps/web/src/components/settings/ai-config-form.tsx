@@ -81,7 +81,7 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({
+    const data = {
       provider,
       display_name: displayName,
       api_key: apiKey,
@@ -89,7 +89,9 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
       protocol,
       models,
       is_default: isDefault,
-    });
+    };
+    console.log("Submitting AI config:", data);
+    await onSubmit(data);
   };
 
   return (
@@ -195,11 +197,23 @@ export function AIConfigForm({ onSubmit, onCancel, isLoading }: AIConfigFormProp
                 placeholder="Model ID (e.g., gpt-4o)"
                 value={newModelId}
                 onChange={(e) => setNewModelId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddModel();
+                  }
+                }}
               />
               <Input
                 placeholder="Display name"
                 value={newModelName}
                 onChange={(e) => setNewModelName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddModel();
+                  }
+                }}
               />
               <Button type="button" variant="outline" onClick={handleAddModel}>
                 Add

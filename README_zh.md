@@ -1,269 +1,259 @@
-# OmniDev AI Platform
+<p align="center">
+  <img src="docs/assets/omnidev-logo.svg" alt="OmniDev AI Platform" width="120" height="120">
+</p>
 
-[English](README.md)
+<h1 align="center">OmniDev AI Platform</h1>
 
-All-in-One AI 开发平台，融合 IDE、Agent、RAG、Workflow、Deploy 等能力。
+<p align="center">
+  <strong>一站式 AI 开发平台</strong>
+</p>
 
-## 快速开始
+<p align="center">
+  打开浏览器，用 AI 写代码、管项目、部署上线，一个平台全搞定。
+</p>
 
-### 前置条件
+<p align="center">
+  <a href="README.md">English</a> · <a href="#-快速开始">快速开始</a> · <a href="#-系统架构">系统架构</a> · <a href="docs/architecture/">文档</a>
+</p>
 
-- Go 1.22+
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
-- Make
+---
 
-### 1. 克隆项目
+## 项目简介
 
-```bash
-git clone git@github.com:m2lan/omnidev.git
-cd omnidev
-```
+OmniDev AI Platform 是一个 **All-in-One AI 开发平台**，将 AI 编程助手、在线 IDE、Agent 编排、RAG 知识库、CI/CD 部署、监控运维融合为统一产品。
 
-### 2. 环境配置
+**一句话定位：** 打开浏览器，就能用 AI 写代码、管项目、部署上线。
 
-```bash
-cp .env.example .env
-# 编辑 .env 设置你的 API Key 等配置
-```
+## 核心功能
 
-### 3. 启动基础设施
+### 在线 IDE
 
-```bash
-# 启动 PostgreSQL, Redis, Kafka, MinIO, Elasticsearch, Temporal
-make dev-infra
-
-# 查看状态
-make dev-status
-```
-
-### 4. 安装依赖
-
-```bash
-# Go 依赖
-make go-mod
-
-# 前端依赖
-make web-install
-```
-
-### 5. 运行数据库迁移
-
-```bash
-make db-migrate
-```
-
-### 6. 启动开发服务器
-
-```bash
-# 启动 API Gateway
-make run-gateway
-
-# 启动前端 (另一个终端)
-make web-dev
-```
-
-### 7. 访问
-
-| 服务 | 地址 |
+| 功能 | 说明 |
 |------|------|
-| Web App | http://localhost:3000 |
-| API Gateway | http://localhost:9090 |
-| Health Check | http://localhost:9090/health |
-| API Info | http://localhost:9090/info |
-| PostgreSQL | localhost:5432 |
-| Redis | localhost:6379 |
-| Kafka | localhost:9092 |
-| MinIO Console | http://localhost:9001 |
-| Elasticsearch | http://localhost:9200 |
-| Temporal UI | http://localhost:8088 |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9091 |
+| Monaco Editor | 语法高亮、多光标、Minimap、文件搜索与替换 |
+| AI 代码补全 | Tab 补全、多行建议、上下文感知（通过 LSP 协议对接 Chat Engine） |
+| Agent 代码修改 | AI Agent 直接修改代码，支持 Diff 预览、接受/拒绝/撤销 |
+| 终端模拟 | xterm.js、多 Tab、SSH、PTY 支持 |
+| Git 操作 | commit/push/pull/branch/merge、可视化 Diff |
+| Code Review | 行内评论、AI 辅助审查、建议修改 |
 
-## 项目结构
+### Agent 系统
 
-```
-omnidev/
-├── apps/                    # 应用层
-│   ├── web/                 # 前端 Next.js
-│   ├── gateway/             # API Gateway (Go)
-│   ├── services/            # 后端微服务
-│   └── workers/             # 后台工作者
-├── packages/                # 共享包
-│   ├── proto/               # Protobuf 定义
-│   ├── go-common/           # Go 公共库
-│   ├── ts-common/           # TypeScript 公共库
-│   └── ui/                  # UI 组件库
-├── deploy/                  # 部署配置
-│   ├── docker/              # Docker Compose
-│   ├── helm/                # Helm Charts
-│   ├── terraform/           # Terraform 配置
-│   └── k8s/                 # K8s 清单
-├── docs/                    # 文档
-├── scripts/                 # 工具脚本
-└── tools/                   # 开发工具
-```
+| 功能 | 说明 |
+|------|------|
+| 自然语言任务执行 | 用户用自然语言描述任务，Agent 自动分解、规划、执行 |
+| Tool Calling | 内置工具 + 自定义 MCP 工具，支持 Function Calling |
+| 可视化编排 | 拖拽画布、节点连线、条件分支 |
+| 沙箱代码执行 | Docker 隔离、资源限制、文件系统挂载 |
+| 执行监控 | 实时日志、步骤追踪、中间状态查看 |
+| Agent 模板 | 预置模板：代码审查、测试生成、文档生成等 |
+| 多 Agent 协作 | CrewAI 模式、角色分配、任务委派 |
+| Agent 市场 | 配置导出、评分、安装统计 |
 
-## 开发命令
+### RAG 知识库
 
-```bash
-# 查看所有命令
-make help
+| 功能 | 说明 |
+|------|------|
+| 多格式上传 | PDF、Markdown、代码文件等 |
+| 混合搜索 | 向量搜索 (pgvector) + 关键词搜索 (Elasticsearch) |
+| 代码索引 | 代码感知的分块与索引 |
+| 上下文注入 | 与 Chat 和 Agent 集成，自动注入知识库上下文 |
 
-# 开发环境
-make dev              # 启动完整开发环境
-make dev-infra        # 仅启动基础设施
-make dev-down         # 停止开发环境
-make dev-logs         # 查看日志
+### CI/CD 与部署
 
-# 构建
-make build-all        # 构建所有服务
-make build-gateway    # 构建 API Gateway
+| 功能 | 说明 |
+|------|------|
+| 自然语言配置 | 用自然语言描述流水线，自动生成配置 |
+| K8s 原生部署 | Kubernetes 原生，支持弹性伸缩 |
+| 多云支持 | AWS / GCP / Azure 统一部署 |
+| Git 触发 | 代码推送自动触发构建与部署 |
 
-# 测试
-make test             # 运行所有测试
-make test-short       # 运行短测试
-make test-integration # 运行集成测试
-make test-coverage    # 生成覆盖率报告
+### 监控与可观测性
 
-# 代码质量
-make lint             # 运行 linter
-make fmt              # 格式化代码
-make check            # 运行所有检查
-
-# 代码生成
-make gen-proto        # 生成 Protobuf 代码
-make gen-wire         # 生成 Wire 代码
-make gen-swagger      # 生成 API 文档
-
-# 数据库
-make db-migrate       # 运行迁移
-make db-migrate-down  # 回滚迁移
-make db-migrate-create NAME=create_xxx  # 创建新迁移
-
-# Docker
-make docker-build     # 构建所有 Docker 镜像
-make docker-build-gateway  # 构建单个镜像
-
-# Kubernetes
-make k8s-apply        # 部署到 K8s
-make helm-install     # 安装 Helm Chart
-```
+| 功能 | 说明 |
+|------|------|
+| OpenTelemetry | 内置 OTel SDK，全链路追踪 |
+| 指标/日志/链路 | Prometheus + Grafana + Loki + Jaeger 全栈 |
+| AI 异常检测 | 基于 AI 的异常自动识别与告警 |
+| 自定义告警 | 灵活的告警规则配置 |
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| Frontend | Next.js 15, React 19, Tailwind, Shadcn/ui |
-| API Gateway | Go, Gin |
-| Backend | Go, gRPC |
-| Database | PostgreSQL 16 + pgvector |
-| Cache | Redis 7 |
-| Queue | Kafka (KRaft) |
-| Storage | MinIO |
-| Search | Elasticsearch 8 |
-| Workflow | Temporal |
-| Container | Docker, Kubernetes |
-| Observability | Prometheus, Grafana, Loki, Jaeger |
+| 后端 | Go 1.22+ / Gin / gRPC / Wire |
+| 前端 | Next.js 15 (App Router) / React 19 / Tailwind CSS / Shadcn/ui |
+| 数据库 | PostgreSQL 16 + pgvector / Redis 7 / Kafka (KRaft) |
+| 对象存储 | MinIO (S3 兼容) |
+| 搜索引擎 | Elasticsearch 8 |
+| 工作流引擎 | Temporal |
+| 基础设施 | Docker / Kubernetes / Helm / Terraform |
+| 可观测性 | Prometheus / Grafana / Loki / Jaeger / OpenTelemetry |
 
-## 架构文档
+## 系统架构
 
-详细架构文档位于 `docs/architecture/` 目录：
-
-- [执行摘要](docs/architecture/00-EXECUTIVE-SUMMARY.md)
-- [需求分析](docs/architecture/01-REQUIREMENTS-ANALYSIS.md)
-- [功能边界](docs/architecture/02-FEATURE-BOUNDARY.md)
-- [非功能需求](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md)
-- [技术选型](docs/architecture/04-TECHNOLOGY-SELECTION.md)
-- [系统架构](docs/architecture/05-SYSTEM-ARCHITECTURE.md)
-- [数据库设计](docs/architecture/06-DATABASE-DESIGN.md)
-- [目录结构](docs/architecture/07-DIRECTORY-STRUCTURE.md)
-- [开发规范](docs/architecture/08-DEVELOPMENT-STANDARDS.md)
-- [里程碑规划](docs/architecture/09-MILESTONE-PLAN.md)
-
-## API 文档
-
-API 遵循 RESTful 规范，所有响应格式：
-
-```json
-// 成功
-{
-  "data": { ... },
-  "meta": { "page_size": 20, "next_page_token": "...", "total_count": 100 }
-}
-
-// 错误
-{
-  "error": { "code": 400, "message": "...", "detail": "...", "request_id": "..." }
-}
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Gateway (Kong/自研)                       │
+│              限流 · 认证 · 路由 · WAF                        │
+└──────────┬──────────┬──────────┬──────────┬─────────────────┘
+           │          │          │          │
+     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
+     │   IDE   │ │  Chat  │ │Agent │ │   RAG   │
+     │ Service │ │ Engine │ │System│ │ Service │
+     └─────────┘ └────────┘ └──────┘ └─────────┘
+           │          │          │          │
+     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
+     │  Git    │ │  MCP   │ │Sandbox│ │  MCP   │
+     │ Service │ │ Server │ │System │ │ Server │
+     └─────────┘ └────────┘ └───────┘ └─────────┘
+           │          │          │          │
+     ┌─────┴──────────┴──────────┴──────────┴─────┐
+     │                 数据层                       │
+     │  PostgreSQL · Redis · Kafka · MinIO · ES    │
+     └─────────────────────────────────────────────┘
 ```
 
-### 认证
+**Agent 执行状态机：**
+
+```
+Created → Planning → Executing → [ToolCall → Waiting → Executing]
+                                      ↓
+                                 Success / Failed / Cancelled
+```
+
+## 项目结构
+
+```
+omnidev-ai-platform/
+├── apps/                    # 应用服务
+│   ├── web/                 # Next.js 前端
+│   ├── gateway/             # API 网关 (Go/Gin)
+│   ├── user/                # 用户服务
+│   ├── project/             # 项目服务
+│   ├── workspace/           # 工作区服务
+│   ├── terminal/            # 终端服务
+│   ├── file/                # 文件服务
+│   ├── git/                 # Git 服务
+│   ├── chat/                # Chat 服务
+│   ├── agent/               # Agent 服务
+│   ├── rag/                 # RAG 服务
+│   ├── workflow/            # 工作流服务
+│   ├── sandbox/             # 沙箱服务
+│   ├── mcp/                 # MCP 服务
+│   ├── billing/             # 计费服务
+│   ├── deploy/              # 部署服务
+│   └── monitor/             # 监控服务
+├── packages/                # 共享库
+│   ├── ui/                  # UI 组件库
+│   ├── utils/               # 通用工具
+│   ├── proto/               # gRPC Proto 定义
+│   └── types/               # 共享 TypeScript 类型
+├── tools/                   # 开发工具与脚本
+├── deploy/                  # 部署配置
+├── docs/                    # 文档
+└── web-extensions/          # 浏览器扩展
+```
+
+## 快速开始
+
+### 环境要求
+
+- Go 1.22+
+- Node.js 20+
+- Docker & Docker Compose
+- PostgreSQL 16
+- Redis 7
+
+### 本地运行
 
 ```bash
-# Bearer Token
-curl -H "Authorization: Bearer <token>" http://localhost:9090/api/v1/users/me
+# 克隆仓库
+git clone https://github.com/your-org/omnidev-ai-platform.git
+cd omnidev-ai-platform
 
-# API Key
-curl -H "Authorization: Bearer <api-key>" http://localhost:9090/api/v1/users/me
+# 启动基础设施
+docker-compose up -d postgres redis kafka minio elasticsearch
+
+# 执行数据库迁移
+cd tools/migrations && make migrate-up
+
+# 启动后端服务
+cd apps/gateway && go run cmd/main.go
+
+# 启动前端
+cd apps/web && pnpm install && pnpm dev
 ```
 
-## 故障排查
+### 环境变量
 
-### 数据库连接失败
+复制 `.env.example` 到 `.env` 并配置：
 
 ```bash
-# 检查 PostgreSQL 是否运行
-docker compose -f deploy/docker/docker-compose.infra.yml ps postgres
-
-# 查看日志
-docker compose -f deploy/docker/docker-compose.infra.yml logs postgres
+cp .env.example .env
 ```
 
-### Redis 连接失败
+关键变量：
+- `DATABASE_URL` — PostgreSQL 连接字符串
+- `REDIS_URL` — Redis 连接字符串
+- `JWT_SECRET` — JWT 签名密钥
+- `OPENAI_API_KEY` — OpenAI API Key（或其他 AI 提供商）
 
-```bash
-# 检查 Redis 是否运行
-docker compose -f deploy/docker/docker-compose.infra.yml ps redis
+## 竞品对比
 
-# 测试连接
-docker compose -f deploy/docker/docker-compose.infra.yml exec redis redis-cli ping
+| 能力域 | 竞品 | OmniDev 差异化 |
+|--------|------|----------------|
+| AI 编程助手 | Cursor, GitHub Copilot | 多模型切换 + 本地模型 + RAG 增强 |
+| 在线 IDE | GitHub Codespaces, Gitpod | 内嵌 AI Agent + 一键部署 |
+| Agent 平台 | OpenHands, AutoGPT | 可视化编排 + 沙箱执行 + 插件市场 |
+| RAG / 知识库 | ChatGPT Projects, Notion AI | 多格式上传 + 混合搜索 + 代码索引 |
+| CI/CD | Jenkins, GitHub Actions | 自然语言配置 + K8s 原生 |
+| 部署托管 | Vercel, Railway | 多云 + K8s + 成本优化 |
+| 监控 | Grafana Cloud | 内置 OpenTelemetry + AI 异常检测 |
+
+## 目标用户
+
+| 用户画像 | 核心场景 |
+|----------|----------|
+| 独立开发者 | 快速原型 → AI 辅助编码 → 一键上线 |
+| 小团队 (2-10 人) | 协作开发 + Agent 自动化 + 共享知识库 |
+| 中大型团队 (10-100 人) | RBAC + 审计 + 合规 + 私有部署 |
+| AI 应用开发者 | 构建/调试/部署 Agent 和 MCP Server |
+
+## 开发路线图
+
+| 里程碑 | 时间 | 交付内容 |
+|--------|------|----------|
+| **M0 — 基础架构** | 第 1-2 月 | 基础设施、数据库、认证、CI/CD |
+| **M1 — Alpha** | 第 3-4 月 | IDE (Monaco + 终端) + Agent (基础执行 + Tool Calling + 沙箱) |
+| **M2 — Beta** | 第 5-6 月 | IDE (Git + Code Review) + Agent (前端 + 执行监控) |
+| **M3 — 生态扩展** | 第 7-9 月 | Agent 可视化编排 + 模板市场 + 多 Agent 协作 |
+| **M4 — 正式发布** | 第 10-12 月 | 性能优化 + 安全加固 + 插件系统 |
+
+## 商业模式
+
+```
+Free Tier        → 个人开发者，基础模型额度，公开项目
+Pro ($29/月)     → 高级模型，私有项目，更多存储/算力
+Team ($19/人/月) → 协作，RBAC，共享资源池
+Enterprise       → 私有部署，SLA，专属支持
 ```
 
-### 端口被占用
+## 文档索引
 
-```bash
-# 查看占用端口的进程
-netstat -ano | findstr :9090
-# 或
-lsof -i :9090
+| 文档 | 说明 |
+|------|------|
+| [执行摘要](docs/architecture/00-EXECUTIVE-SUMMARY.md) | 项目愿景与定位 |
+| [需求分析](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | 功能与非功能需求 |
+| [功能边界](docs/architecture/02-FEATURE-BOUNDARY.md) | 模块边界与依赖关系 |
+| [非功能需求](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | 性能、安全、可用性指标 |
+| [技术选型](docs/architecture/04-TECHNOLOGY-SELECTION.md) | 技术栈对比分析 |
+| [系统架构](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | 架构图 (Mermaid) |
+| [数据库设计](docs/architecture/06-DATABASE-DESIGN.md) | ER 图与表结构 |
+| [目录结构](docs/architecture/07-DIRECTORY-STRUCTURE.md) | 项目目录规范 |
+| [开发规范](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | 编码规范与流程 |
+| [里程碑计划](docs/architecture/09-MILESTONE-PLAN.md) | 详细里程碑排期 |
 
-# 杀死进程
-taskkill /PID <pid> /F
-```
+## 开源协议
 
-### Go 模块问题
-
-```bash
-# 清理模块缓存
-go clean -modcache
-
-# 重新下载
-go mod download all
-
-# 同步 workspace
-go work sync
-```
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建功能分支: `git checkout -b feature/my-feature`
-3. 提交更改: `git commit -m 'feat(scope): add my feature'`
-4. 推送分支: `git push origin feature/my-feature`
-5. 创建 Pull Request
-
-## 许可证
-
-[MIT License](LICENSE)
+[MIT](LICENSE)

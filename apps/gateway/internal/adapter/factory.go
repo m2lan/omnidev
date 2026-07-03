@@ -10,12 +10,18 @@ import (
 
 // UserAIConfig represents a user's AI configuration for adapter creation.
 type UserAIConfig struct {
-	ID       uuid.UUID
-	Provider string
-	APIKey   string // Encrypted
-	BaseURL  string
-	Protocol string // "openai" or "anthropic"
-	Models   []string
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Provider    string
+	DisplayName string
+	APIKey      string // Encrypted
+	BaseURL     string
+	Protocol    string // "openai" or "anthropic"
+	Models      []string
+	IsDefault   bool
+	IsActive    bool
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 // Factory creates adapters from user configurations.

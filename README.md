@@ -1,269 +1,225 @@
-# OmniDev AI Platform
+<p align="center">
+  <img src="docs/assets/omnidev-logo.svg" alt="OmniDev AI Platform" width="120" height="120">
+</p>
 
-[中文](README_zh.md)
+<h1 align="center">OmniDev AI Platform</h1>
 
-All-in-One AI development platform integrating IDE, Agent, RAG, Workflow, Deploy and more.
+<p align="center">
+  <strong>All-in-One AI Development Platform</strong>
+</p>
 
-## Quick Start
+<p align="center">
+  Open your browser, write code with AI, manage projects, and deploy — all in one place.
+</p>
 
-### Prerequisites
+<p align="center">
+  <a href="README_zh.md">中文文档</a> · <a href="#-quickstart">Quickstart</a> · <a href="#-architecture">Architecture</a> · <a href="docs/architecture/">Docs</a>
+</p>
 
-- Go 1.22+
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
-- Make
+---
 
-### 1. Clone the Project
+## What is OmniDev?
 
-```bash
-git clone git@github.com:m2lan/omnidev.git
-cd omnidev
-```
+OmniDev integrates an AI coding assistant, online IDE, Agent orchestration, RAG knowledge base, CI/CD pipelines, and monitoring into a single platform. It's designed for developers and teams who want to build, ship, and operate software without switching between a dozen tools.
 
-### 2. Environment Configuration
+## Key Features
 
-```bash
-cp .env.example .env
-# Edit .env to set your API Key and other configurations
-```
+### Online IDE
+- **Monaco Editor** — syntax highlighting, multi-cursor, minimap, file search & replace
+- **AI Code Completion** — Tab completion, multi-line suggestions, context-aware via LSP
+- **Agent Code Editing** — AI Agent directly modifies code with Diff preview, accept/reject/undo
+- **Terminal Emulator** — xterm.js, multi-tab, SSH, PTY support
+- **Git Integration** — commit/push/pull/branch/merge, visual Diff
+- **Code Review** — inline comments, AI-assisted review
 
-### 3. Start Infrastructure
+### Agent System
+- **Natural Language Tasks** — describe what you want, Agent decomposes, plans, and executes
+- **Tool Calling** — built-in tools + custom MCP tools with Function Calling support
+- **Visual Orchestration** — drag-and-drop canvas, node wiring, conditional branching
+- **Sandbox Execution** — Docker isolation, resource limits, filesystem mounting
+- **Execution Monitoring** — real-time logs, step tracing, intermediate state inspection
+- **Agent Templates** — pre-built: code review, test generation, doc generation, etc.
+- **Multi-Agent Collaboration** — CrewAI-style, role assignment, task delegation
+- **Agent Marketplace** — export configs, ratings, install stats
 
-```bash
-# Start PostgreSQL, Redis, Kafka, MinIO, Elasticsearch, Temporal
-make dev-infra
+### RAG Knowledge Base
+- Multi-format upload (PDF, Markdown, code files)
+- Hybrid search: vector (pgvector) + keyword (Elasticsearch)
+- Code-aware chunking & indexing
+- Integration with Chat and Agent for context injection
 
-# Check status
-make dev-status
-```
+### CI/CD & Deployment
+- Natural language pipeline configuration
+- Kubernetes-native deployment
+- Multi-cloud support (AWS/GCP/Azure)
+- Git-triggered automated pipelines
 
-### 4. Install Dependencies
-
-```bash
-# Go dependencies
-make go-mod
-
-# Frontend dependencies
-make web-install
-```
-
-### 5. Run Database Migrations
-
-```bash
-make db-migrate
-```
-
-### 6. Start Development Servers
-
-```bash
-# Start API Gateway
-make run-gateway
-
-# Start frontend (another terminal)
-make web-dev
-```
-
-### 7. Access
-
-| Service | URL |
-|---------|-----|
-| Web App | http://localhost:3000 |
-| API Gateway | http://localhost:9090 |
-| Health Check | http://localhost:9090/health |
-| API Info | http://localhost:9090/info |
-| PostgreSQL | localhost:5432 |
-| Redis | localhost:6379 |
-| Kafka | localhost:9092 |
-| MinIO Console | http://localhost:9001 |
-| Elasticsearch | http://localhost:9200 |
-| Temporal UI | http://localhost:8088 |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9091 |
-
-## Project Structure
-
-```
-omnidev/
-├── apps/                    # Application layer
-│   ├── web/                 # Frontend Next.js
-│   ├── gateway/             # API Gateway (Go)
-│   ├── services/            # Backend microservices
-│   └── workers/             # Background workers
-├── packages/                # Shared packages
-│   ├── proto/               # Protobuf definitions
-│   ├── go-common/           # Go common library
-│   ├── ts-common/           # TypeScript common library
-│   └── ui/                  # UI component library
-├── deploy/                  # Deployment configs
-│   ├── docker/              # Docker Compose
-│   ├── helm/                # Helm Charts
-│   ├── terraform/           # Terraform configs
-│   └── k8s/                 # K8s manifests
-├── docs/                    # Documentation
-├── scripts/                 # Utility scripts
-└── tools/                   # Development tools
-```
-
-## Development Commands
-
-```bash
-# View all commands
-make help
-
-# Development environment
-make dev              # Start full development environment
-make dev-infra        # Start infrastructure only
-make dev-down         # Stop development environment
-make dev-logs         # View logs
-
-# Build
-make build-all        # Build all services
-make build-gateway    # Build API Gateway
-
-# Test
-make test             # Run all tests
-make test-short       # Run short tests
-make test-integration # Run integration tests
-make test-coverage    # Generate coverage report
-
-# Code quality
-make lint             # Run linter
-make fmt              # Format code
-make check            # Run all checks
-
-# Code generation
-make gen-proto        # Generate Protobuf code
-make gen-wire         # Generate Wire code
-make gen-swagger      # Generate API docs
-
-# Database
-make db-migrate       # Run migrations
-make db-migrate-down  # Rollback migration
-make db-migrate-create NAME=create_xxx  # Create new migration
-
-# Docker
-make docker-build     # Build all Docker images
-make docker-build-gateway  # Build single image
-
-# Kubernetes
-make k8s-apply        # Deploy to K8s
-make helm-install     # Install Helm Chart
-```
+### Monitoring & Observability
+- Built-in OpenTelemetry integration
+- Prometheus + Grafana + Loki + Jaeger stack
+- AI-powered anomaly detection
+- Custom alerting rules
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 15, React 19, Tailwind, Shadcn/ui |
-| API Gateway | Go, Gin |
-| Backend | Go, gRPC |
-| Database | PostgreSQL 16 + pgvector |
-| Cache | Redis 7 |
-| Queue | Kafka (KRaft) |
-| Storage | MinIO |
+| Backend | Go 1.22+, Gin, gRPC, Wire (DI) |
+| Frontend | Next.js 15 (App Router), React 19, Tailwind CSS, Shadcn/ui |
+| Database | PostgreSQL 16 + pgvector, Redis 7, Kafka (KRaft) |
+| Storage | MinIO (S3 compatible) |
 | Search | Elasticsearch 8 |
 | Workflow | Temporal |
-| Container | Docker, Kubernetes |
-| Observability | Prometheus, Grafana, Loki, Jaeger |
+| Infra | Docker, Kubernetes, Helm, Terraform |
+| Observability | Prometheus, Grafana, Loki, Jaeger, OpenTelemetry |
 
-## Architecture Documentation
+## Architecture
 
-Detailed architecture documentation is located in the `docs/architecture/` directory:
-
-- [Executive Summary](docs/architecture/00-EXECUTIVE-SUMMARY.md)
-- [Requirements Analysis](docs/architecture/01-REQUIREMENTS-ANALYSIS.md)
-- [Feature Boundary](docs/architecture/02-FEATURE-BOUNDARY.md)
-- [Non-Functional Requirements](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md)
-- [Technology Selection](docs/architecture/04-TECHNOLOGY-SELECTION.md)
-- [System Architecture](docs/architecture/05-SYSTEM-ARCHITECTURE.md)
-- [Database Design](docs/architecture/06-DATABASE-DESIGN.md)
-- [Directory Structure](docs/architecture/07-DIRECTORY-STRUCTURE.md)
-- [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md)
-- [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md)
-
-## API Documentation
-
-The API follows RESTful conventions. All response formats:
-
-```json
-// Success
-{
-  "data": { ... },
-  "meta": { "page_size": 20, "next_page_token": "...", "total_count": 100 }
-}
-
-// Error
-{
-  "error": { "code": 400, "message": "...", "detail": "...", "request_id": "..." }
-}
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Gateway (Kong/Custom)                      │
+│              Rate Limit · Auth · Routing · WAF               │
+└──────────┬──────────┬──────────┬──────────┬─────────────────┘
+           │          │          │          │
+     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
+     │   IDE   │ │  Chat  │ │Agent │ │   RAG   │
+     │ Service │ │ Engine │ │System│ │ Service │
+     └─────────┘ └────────┘ └──────┘ └─────────┘
+           │          │          │          │
+     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
+     │  Git    │ │  MCP   │ │Sandbox│ │  MCP   │
+     │ Service │ │ Server │ │System │ │ Server │
+     └─────────┘ └────────┘ └───────┘ └─────────┘
+           │          │          │          │
+     ┌─────┴──────────┴──────────┴──────────┴─────┐
+     │              Data Layer                      │
+     │  PostgreSQL · Redis · Kafka · MinIO · ES    │
+     └─────────────────────────────────────────────┘
 ```
 
-### Authentication
+## Project Structure
+
+```
+omnidev-ai-platform/
+├── apps/                    # Application services
+│   ├── web/                 # Next.js frontend
+│   ├── gateway/             # API Gateway (Go/Gin)
+│   ├── user/                # User Service (Go)
+│   ├── project/             # Project Service (Go)
+│   ├── workspace/           # Workspace Service (Go)
+│   ├── terminal/            # Terminal Service (Go)
+│   ├── file/                # File Service (Go)
+│   ├── git/                 # Git Service (Go)
+│   ├── chat/                # Chat Service (Go)
+│   ├── agent/               # Agent Service (Go)
+│   ├── rag/                 # RAG Service (Go)
+│   ├── workflow/            # Workflow Service (Go)
+│   ├── sandbox/             # Sandbox Service (Go)
+│   ├── mcp/                 # MCP Service (Go)
+│   ├── billing/             # Billing Service (Go)
+│   ├── deploy/              # Deploy Service (Go)
+│   └── monitor/             # Monitor Service (Go)
+├── packages/                # Shared libraries
+│   ├── ui/                  # UI component library
+│   ├── utils/               # Common utilities
+│   ├── proto/               # gRPC proto definitions
+│   └── types/               # Shared TypeScript types
+├── tools/                   # Dev tools & scripts
+├── deploy/                  # Deployment configs
+├── docs/                    # Documentation
+└── web-extensions/          # Browser extensions
+```
+
+## Quickstart
+
+### Prerequisites
+
+- Go 1.22+
+- Node.js 20+
+- Docker & Docker Compose
+- PostgreSQL 16
+- Redis 7
+
+### Run Locally
 
 ```bash
-# Bearer Token
-curl -H "Authorization: Bearer <token>" http://localhost:9090/api/v1/users/me
+# Clone the repository
+git clone https://github.com/your-org/omnidev-ai-platform.git
+cd omnidev-ai-platform
 
-# API Key
-curl -H "Authorization: Bearer <api-key>" http://localhost:9090/api/v1/users/me
+# Start infrastructure
+docker-compose up -d postgres redis kafka minio elasticsearch
+
+# Run database migrations
+cd tools/migrations && make migrate-up
+
+# Start backend services
+cd apps/gateway && go run cmd/main.go
+
+# Start frontend
+cd apps/web && pnpm install && pnpm dev
 ```
 
-## Troubleshooting
+### Environment Variables
 
-### Database Connection Failed
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Check if PostgreSQL is running
-docker compose -f deploy/docker/docker-compose.infra.yml ps postgres
-
-# View logs
-docker compose -f deploy/docker/docker-compose.infra.yml logs postgres
+cp .env.example .env
 ```
 
-### Redis Connection Failed
+Key variables:
+- `DATABASE_URL` — PostgreSQL connection string
+- `REDIS_URL` — Redis connection string
+- `JWT_SECRET` — JWT signing secret
+- `OPENAI_API_KEY` — OpenAI API key (or other provider)
 
-```bash
-# Check if Redis is running
-docker compose -f deploy/docker/docker-compose.infra.yml ps redis
+## Competitive Landscape
 
-# Test connection
-docker compose -f deploy/docker/docker-compose.infra.yml exec redis redis-cli ping
-```
+| Capability | Competitors | OmniDev Differentiator |
+|-----------|-------------|----------------------|
+| AI Coding | Cursor, GitHub Copilot | Multi-model + local models + RAG |
+| Online IDE | Codespaces, Gitpod | Embedded AI Agent + one-click deploy |
+| Agent Platform | OpenHands, AutoGPT | Visual orchestration + sandbox + marketplace |
+| RAG / Knowledge | ChatGPT Projects, Notion AI | Multi-format + hybrid search + code index |
+| CI/CD | Jenkins, GitHub Actions | Natural language config + K8s native |
+| Deployment | Vercel, Railway | Multi-cloud + K8s + cost optimization |
+| Monitoring | Grafana Cloud | Built-in OTel + AI anomaly detection |
 
-### Port Already in Use
+## Target Users
 
-```bash
-# Find process using the port
-netstat -ano | findstr :9090
-# or
-lsof -i :9090
+| Persona | Use Case |
+|---------|----------|
+| Solo Developer | Rapid prototype → AI-assisted coding → one-click deploy |
+| Small Team (2-10) | Collaborative dev + Agent automation + shared knowledge base |
+| Medium/Large Team (10-100) | RBAC + audit + compliance + private deployment |
+| AI App Developer | Build/debug/deploy Agents and MCP Servers |
 
-# Kill process
-taskkill /PID <pid> /F
-```
+## Development Roadmap
 
-### Go Module Issues
+| Milestone | Timeline | Deliverables |
+|-----------|----------|--------------|
+| **M0 — Foundation** | Month 1-2 | Infrastructure, DB, auth, CI/CD |
+| **M1 — Alpha** | Month 3-4 | IDE (Monaco + terminal) + Agent (basic execution + tool calling + sandbox) |
+| **M2 — Beta** | Month 5-6 | IDE (Git + code review) + Agent (frontend + monitoring) |
+| **M3 — Ecosystem** | Month 7-9 | Agent visual orchestration + marketplace + multi-agent |
+| **M4 — GA** | Month 10-12 | Performance + security hardening + plugin system |
 
-```bash
-# Clean module cache
-go clean -modcache
+## Documentation
 
-# Re-download
-go mod download all
-
-# Sync workspace
-go work sync
-```
-
-## Contributing
-
-1. Fork the project
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit changes: `git commit -m 'feat(scope): add my feature'`
-4. Push branch: `git push origin feature/my-feature`
-5. Create a Pull Request
+| Document | Description |
+|----------|-------------|
+| [Executive Summary](docs/architecture/00-EXECUTIVE-SUMMARY.md) | Project vision & positioning |
+| [Requirements Analysis](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | Functional & non-functional requirements |
+| [Feature Boundary](docs/architecture/02-FEATURE-BOUNDARY.md) | Module boundaries & dependencies |
+| [Non-Functional Requirements](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | Performance, security, availability |
+| [Technology Selection](docs/architecture/04-TECHNOLOGY-SELECTION.md) | Tech stack comparison & rationale |
+| [System Architecture](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | Architecture diagrams (Mermaid) |
+| [Database Design](docs/architecture/06-DATABASE-DESIGN.md) | ER diagrams & schema |
+| [Directory Structure](docs/architecture/07-DIRECTORY-STRUCTURE.md) | Project layout |
+| [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | Coding standards & workflow |
+| [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md) | Detailed milestone schedule |
 
 ## License
 
-[MIT License](LICENSE)
+[MIT](LICENSE)
