@@ -334,6 +334,39 @@ func (h *ChatHandler) ListModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": models})
 }
 
+// GenerateImage generates images using an AI model.
+// POST /api/v1/images/generate
+func (h *ChatHandler) GenerateImage(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		chatUnauthorized(c)
+		return
+	}
+
+	var input service.GenerateImageInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		chatBadRequest(c, err.Error())
+		return
+	}
+
+	if input.Model == "" {
+		chatBadRequest(c, "model is required")
+		return
+	}
+	if input.Prompt == "" {
+		chatBadRequest(c, "prompt is required")
+		return
+	}
+
+	results, err := h.chatSvc.GenerateImage(c.Request.Context(), userID, &input)
+	if err != nil {
+		chatHandleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": results})
+}
+
 // --- Helper functions ---
 
 func chatUnauthorized(c *gin.Context) {

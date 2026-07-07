@@ -196,3 +196,115 @@
   max-width: 100% !important;
   overflow: hidden !important;
 }
+
+/* ===== Image Generation Animations ===== */
+
+/* Gradient border animation for placeholder */
+@keyframes imageGenBorder {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.image-gen-border {
+  background: linear-gradient(
+    270deg,
+    hsl(var(--primary) / 0.3),
+    hsl(var(--primary) / 0.1),
+    hsl(var(--muted-foreground) / 0.2),
+    hsl(var(--primary) / 0.3)
+  );
+  background-size: 300% 300%;
+  animation: imageGenBorder 3s ease infinite;
+}
+
+/* Shimmer effect for placeholder */
+@keyframes imageGenShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.image-gen-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--muted-foreground) / 0.05) 50%,
+    transparent 100%
+  );
+  animation: imageGenShimmer 1.5s ease-in-out infinite;
+}
+
+/* Pulse animation for the icon */
+@keyframes imageGenIconPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+}
+
+.image-gen-icon-pulse {
+  animation: imageGenIconPulse 2s ease-in-out infinite;
+}
+
+/* Image reveal animation - blur to clear */
+@keyframes imageReveal {
+  0% {
+    filter: blur(20px);
+    opacity: 0;
+    transform: scale(1.05);
+  }
+  100% {
+    filter: blur(0);
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.image-reveal-loading {
+  filter: blur(20px);
+  opacity: 0;
+  transform: scale(1.05);
+}
+
+.image-reveal-done {
+  animation: imageReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Generated image container hover effect */
+.generated-image-container {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.generated-image-container:hover {
+  transform: translateY(-2px);
+}
+
+/* Image generation placeholder breathing effect */
+@keyframes placeholderBreathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.image-gen-placeholder .placeholder-breathe {
+  animation: placeholderBreathe 2s ease-in-out infinite;
+}

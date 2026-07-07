@@ -193,6 +193,45 @@ func (r *Registry) Providers() []string {
 	return providers
 }
 
+// --- Image Generation Types ---
+
+// ImageRequest represents an image generation request.
+type ImageRequest struct {
+	Model          string  `json:"model"`
+	Prompt         string  `json:"prompt"`
+	N              int     `json:"n,omitempty"`               // Number of images to generate
+	Size           string  `json:"size,omitempty"`            // e.g. "1024x1024", "768x1344"
+	Quality        string  `json:"quality,omitempty"`         // "standard", "hd"
+	Style          string  `json:"style,omitempty"`           // "vivid", "natural"
+	ResponseFormat string  `json:"response_format,omitempty"` // "url", "b64_json"
+	Watermark      *bool   `json:"watermark_enabled,omitempty"`
+	UserID         string  `json:"user_id,omitempty"`
+}
+
+// ImageData represents a single generated image.
+type ImageData struct {
+	URL           string `json:"url,omitempty"`
+	Base64        string `json:"b64_json,omitempty"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+}
+
+// ImageResponse represents an image generation response.
+type ImageResponse struct {
+	ID     string      `json:"id"`
+	Images []ImageData `json:"data"`
+	Model  string      `json:"model,omitempty"`
+}
+
+// ImageGenerator defines the interface for image generation providers.
+// Adapters that support image generation should implement this interface.
+type ImageGenerator interface {
+	// ImageModels returns the list of supported image model IDs.
+	ImageModels() []string
+
+	// GenerateImage generates images from a text prompt.
+	GenerateImage(ctx context.Context, req *ImageRequest) (*ImageResponse, error)
+}
+
 // StreamToString reads a stream channel and returns the complete response.
 func StreamToString(ch <-chan ChatStreamChunk) (string, Usage, error) {
 	var content string

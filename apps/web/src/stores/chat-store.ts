@@ -1,9 +1,16 @@
 import { create } from "zustand";
-import { api, type Conversation, type Message, type Attachment } from "@/lib/api/client";
+import { api, type Conversation, type Message, type Attachment, type GenerateImageParams } from "@/lib/api/client";
 
 interface StreamingState {
   content: string;
   reasoning: string;
+}
+
+interface ImageGenerationState {
+  isGenerating: boolean;
+  prompt: string;
+  progress: "idle" | "generating" | "downloading" | "complete" | "error";
+  error?: string;
 }
 
 interface ChatState {
@@ -19,12 +26,16 @@ interface ChatState {
   streamingStates: Record<string, StreamingState>;
   sendingConversationIds: Set<string>;
 
+  // Image generation state
+  imageGeneration: ImageGenerationState;
+
   // Actions
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<Conversation>;
   setActiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   sendMessage: (content: string, attachmentIds?: string[], attachments?: Attachment[]) => Promise<void>;
+  generateImage: (params: GenerateImageParams) => Promise<void>;
   setSelectedModel: (model: string) => void;
   clearError: () => void;
   resetSending: () => void;
@@ -40,6 +51,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedModel: "",
   streamingStates: {},
   sendingConversationIds: new Set(),
+  imageGeneration: {
+    isGenerating: false,
+    prompt: "",
+    progress: "idle",
+  },
 
   // Computed: is the active conversation sending?
   get isActiveSending() {
@@ -273,6 +289,89 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       }
     );
+  },
+
+  generateImage: async (params: GenerateImageParams) => {
+    let { activeConversationId } = get();
+
+    // Create conversation if none exists
+    if (!activeConversationId) {
+      try {
+        const conv = await get().createConversation();
+        activeConversationId = conv.id;
+      } catch {
+        return;
+      }
+    }
+
+    const conversationId = activeConversationId;
+
+    // Set generating state
+    set({
+      imageGeneration: {
+        isGenerating: true,
+        prompt: params.prompt,
+        progress: "generating",
+      },
+      error: null,
+    });
+
+    // Optimistic: show user message immediately
+    const userMsg: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: conversationId,
+      role: "user",
+      content: `🎨 ${params.prompt}`,
+      created_at: new Date().toISOString(),
+    };
+    set((state) => {
+      const newMessages = [...state.messages, userMsg];
+      return {
+        messages: state.activeConversationId === conversationId ? newMessages : state.messages,
+        messagesCache: { ...state.messagesCache, [conversationId]: newMessages },
+      };
+    });
+
+    try {
+      const { data: results } = await api.generateImage({
+        ...params,
+        conversation_id: conversationId,
+      });
+
+      set({
+        imageGeneration: {
+          isGenerating: false,
+          prompt: params.prompt,
+          progress: "complete",
+        },
+      });
+
+      // Reload messages from server to get persisted user + assistant messages
+      if (results && results.length > 0) {
+        try {
+          const { data: msgs } = await api.listMessages(conversationId, { page_size: 50 });
+          set((state) => ({
+            messages: state.activeConversationId === conversationId ? (msgs || []) : state.messages,
+            messagesCache: { ...state.messagesCache, [conversationId]: msgs || [] },
+          }));
+        } catch {
+          // ignore reload errors
+        }
+
+        // Refresh conversations to get updated title
+        get().fetchConversations();
+      }
+    } catch (err) {
+      set({
+        imageGeneration: {
+          isGenerating: false,
+          prompt: params.prompt,
+          progress: "error",
+          error: err instanceof Error ? err.message : "Image generation failed",
+        },
+        error: err instanceof Error ? err.message : "Image generation failed",
+      });
+    }
   },
 
   setSelectedModel: (model: string) => {

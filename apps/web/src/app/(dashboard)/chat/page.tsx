@@ -5,6 +5,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { ConversationList } from "@/components/chat/conversation-list";
 import { ChatArea } from "@/components/chat/chat-area";
 import { Button } from "@/components/ui/button";
+import type { GenerateImageParams } from "@/lib/api/client";
 
 export default function ChatPage() {
   const {
@@ -16,11 +17,13 @@ export default function ChatPage() {
     selectedModel,
     sendingConversationIds,
     streamingStates,
+    imageGeneration,
     fetchConversations,
     createConversation,
     setActiveConversation,
     deleteConversation,
     sendMessage,
+    generateImage,
     setSelectedModel,
     clearError,
     resetSending,
@@ -57,6 +60,10 @@ export default function ChatPage() {
     await sendMessage(content, attachmentIds, attachments);
   };
 
+  const handleGenerateImage = async (params: GenerateImageParams) => {
+    await generateImage(params);
+  };
+
   return (
     <div className="flex h-full min-h-0">
       {/* Conversation List */}
@@ -90,6 +97,8 @@ export default function ChatPage() {
           onModelChange={setSelectedModel}
           onClearError={clearError}
           hasConversation={!!activeConversationId}
+          imageGeneration={imageGeneration}
+          onGenerateImage={handleGenerateImage}
         />
       </div>
     </div>

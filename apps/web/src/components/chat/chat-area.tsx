@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Message, Attachment } from "@/lib/api/client";
+import type { Message, Attachment, GenerateImageParams } from "@/lib/api/client";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ModelSelector } from "@/components/chat/model-selector";
 import {
   FileUploadButton,
   AttachmentPreviewList,
 } from "@/components/chat/file-upload-button";
+import { ImageGenerationPlaceholder } from "@/components/chat/image-generation-animation";
 import { Button } from "@/components/ui/button";
 
 interface ChatAreaProps {
@@ -22,6 +23,14 @@ interface ChatAreaProps {
   onModelChange: (model: string) => void;
   onClearError: () => void;
   hasConversation: boolean;
+  // Image generation props
+  imageGeneration?: {
+    isGenerating: boolean;
+    prompt: string;
+    progress: "idle" | "generating" | "downloading" | "complete" | "error";
+    error?: string;
+  };
+  onGenerateImage?: (params: GenerateImageParams) => Promise<void>;
 }
 
 export function ChatArea({
@@ -36,17 +45,25 @@ export function ChatArea({
   onModelChange,
   onClearError,
   hasConversation,
+  imageGeneration,
+  onGenerateImage,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isImageMode, setIsImageMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+    // Also scroll after a delay to catch late-rendering images
+    const timer = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [messages, streamingContent, imageGeneration?.isGenerating]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -83,6 +100,26 @@ export function ChatArea({
     if ((!hasContent && !hasAttachments) || isSending) return;
 
     const content = input.trim();
+
+    // Image generation mode
+    if (isImageMode && onGenerateImage && hasContent) {
+      setInput("");
+      setUploadError(null);
+      onClearError();
+
+      try {
+        await onGenerateImage({
+          model: selectedModel,
+          prompt: content,
+          size: "1024x1024",
+        });
+      } catch {
+        setInput(content);
+      }
+      return;
+    }
+
+    // Normal chat mode
     const attachmentIds = pendingAttachments.map((a) => a.id);
     const attachmentsData = [...pendingAttachments];
     console.log("Sending with attachmentIds:", attachmentIds, attachmentsData);
@@ -124,12 +161,17 @@ export function ChatArea({
               {[
                 { icon: "💻", text: "Write a Python script to..." },
                 { icon: "📝", text: "Help me write an email..." },
-                { icon: "🔍", text: "Explain this concept..." },
+                { icon: "🎨", text: "Generate an image of...", mode: "image" as const },
                 { icon: "🐛", text: "Debug this code..." },
               ].map((suggestion) => (
                 <button
                   key={suggestion.text}
-                  onClick={() => setInput(suggestion.text)}
+                  onClick={() => {
+                    setInput(suggestion.text);
+                    if (suggestion.mode === "image") {
+                      setIsImageMode(true);
+                    }
+                  }}
                   className="flex items-center gap-2 rounded-lg border p-3 text-left text-sm hover:bg-muted transition-colors"
                 >
                   <span>{suggestion.icon}</span>
@@ -143,7 +185,22 @@ export function ChatArea({
         {/* Input */}
         <div className="border-t p-4">
           <div className="w-full mx-auto">
-            <ModelSelector value={selectedModel} onChange={onModelChange} />
+            <div className="flex items-center gap-2 mb-2">
+              <ModelSelector value={selectedModel} onChange={onModelChange} />
+              <button
+                type="button"
+                onClick={() => setIsImageMode(!isImageMode)}
+                className={`ml-auto flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                  isImageMode
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+                title={isImageMode ? "Switch to Chat mode" : "Switch to Image Generation mode"}
+              >
+                <span>{isImageMode ? "💬" : "🎨"}</span>
+                <span>{isImageMode ? "Chat" : "Image"}</span>
+              </button>
+            </div>
             {/* Upload error */}
             {uploadError && (
               <div className="mt-2 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded">
@@ -151,23 +208,31 @@ export function ChatArea({
               </div>
             )}
             {/* Attachment previews */}
-            <AttachmentPreviewList
-              attachments={pendingAttachments}
-              onRemove={handleRemoveAttachment}
-              disabled={isSending}
-            />
-            <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
-              <FileUploadButton
-                onUploadComplete={handleUploadComplete}
-                onError={handleUploadError}
+            {!isImageMode && (
+              <AttachmentPreviewList
+                attachments={pendingAttachments}
+                onRemove={handleRemoveAttachment}
                 disabled={isSending}
               />
+            )}
+            <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
+              {!isImageMode && (
+                <FileUploadButton
+                  onUploadComplete={handleUploadComplete}
+                  onError={handleUploadError}
+                  disabled={isSending}
+                />
+              )}
               <textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message... (Shift+Enter for new line)"
+                placeholder={
+                  isImageMode
+                    ? "Describe the image you want to generate..."
+                    : "Type your message... (Shift+Enter for new line)"
+                }
                 className="flex-1 resize-none rounded-lg border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 rows={1}
                 disabled={isSending}
@@ -177,7 +242,11 @@ export function ChatArea({
                 disabled={(!input.trim() && pendingAttachments.length === 0) || isSending}
                 className="self-end"
               >
-                {isSending ? "..." : "Send"}
+                {isSending
+                  ? "..."
+                  : isImageMode
+                  ? "🎨 Generate"
+                  : "Send"}
               </Button>
             </form>
           </div>
@@ -252,7 +321,7 @@ export function ChatArea({
           )}
 
           {/* Loading indicator */}
-          {isSending && !streamingContent && !streamingReasoning && (
+          {isSending && !streamingContent && !streamingReasoning && !imageGeneration?.isGenerating && (
             <div className="flex gap-3 px-4 py-3 animate-fade-in">
               <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium">
                 AI
@@ -263,6 +332,22 @@ export function ChatArea({
                   <span className="animate-bounce" style={{ animationDelay: "0.1s" }}>●</span>
                   <span className="animate-bounce" style={{ animationDelay: "0.2s" }}>●</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Image generation placeholder */}
+          {imageGeneration?.isGenerating && (
+            <div className="flex gap-3 px-4 py-3 animate-fade-in">
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-xs font-medium">
+                AI
+              </div>
+              <div className="flex-1">
+                <ImageGenerationPlaceholder
+                  prompt={imageGeneration.prompt}
+                  progress={imageGeneration.progress}
+                  error={imageGeneration.error}
+                />
               </div>
             </div>
           )}
@@ -292,7 +377,22 @@ export function ChatArea({
       {/* Input */}
       <div className="border-t p-4">
         <div className="w-full mx-auto">
-          <ModelSelector value={selectedModel} onChange={onModelChange} />
+          <div className="flex items-center gap-2 mb-2">
+            <ModelSelector value={selectedModel} onChange={onModelChange} />
+            <button
+              type="button"
+              onClick={() => setIsImageMode(!isImageMode)}
+              className={`ml-auto flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                isImageMode
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+              title={isImageMode ? "Switch to Chat mode" : "Switch to Image Generation mode"}
+            >
+              <span>{isImageMode ? "💬" : "🎨"}</span>
+              <span>{isImageMode ? "Chat" : "Image"}</span>
+            </button>
+          </div>
           {/* Upload error */}
           {uploadError && (
             <div className="mt-2 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded">
@@ -300,33 +400,49 @@ export function ChatArea({
             </div>
           )}
           {/* Attachment previews */}
-          <AttachmentPreviewList
-            attachments={pendingAttachments}
-            onRemove={handleRemoveAttachment}
-            disabled={isSending}
-          />
-          <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
-            <FileUploadButton
-              onUploadComplete={handleUploadComplete}
-              onError={handleUploadError}
+          {!isImageMode && (
+            <AttachmentPreviewList
+              attachments={pendingAttachments}
+              onRemove={handleRemoveAttachment}
               disabled={isSending}
             />
+          )}
+          <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
+            {!isImageMode && (
+              <FileUploadButton
+                onUploadComplete={handleUploadComplete}
+                onError={handleUploadError}
+                disabled={isSending}
+              />
+            )}
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Shift+Enter for new line)"
+              placeholder={
+                isImageMode
+                  ? "Describe the image you want to generate..."
+                  : "Type your message... (Shift+Enter for new line)"
+              }
               className="flex-1 resize-none rounded-lg border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               rows={1}
-              disabled={isSending}
+              disabled={isSending || imageGeneration?.isGenerating}
             />
             <Button
               type="submit"
-              disabled={(!input.trim() && pendingAttachments.length === 0) || isSending}
+              disabled={
+                !input.trim() ||
+                isSending ||
+                imageGeneration?.isGenerating
+              }
               className="self-end"
             >
-              {isSending ? "..." : "Send"}
+              {isSending || imageGeneration?.isGenerating
+                ? "..."
+                : isImageMode
+                ? "🎨 Generate"
+                : "Send"}
             </Button>
           </form>
         </div>

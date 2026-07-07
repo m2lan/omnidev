@@ -231,6 +231,85 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 	return ch, nil
 }
 
+// ImageModels returns the list of supported image model IDs.
+// Returns the adapter's configured models — the user decides which models support image generation.
+func (a *OpenAIAdapter) ImageModels() []string {
+	return a.models
+}
+
+// GenerateImage generates images from a text prompt.
+func (a *OpenAIAdapter) GenerateImage(ctx context.Context, req *ImageRequest) (*ImageResponse, error) {
+	body := map[string]interface{}{
+		"model":  req.Model,
+		"prompt": req.Prompt,
+	}
+	if req.N > 0 {
+		body["n"] = req.N
+	}
+	if req.Size != "" {
+		body["size"] = req.Size
+	}
+	if req.Quality != "" {
+		body["quality"] = req.Quality
+	}
+	if req.Style != "" {
+		body["style"] = req.Style
+	}
+	if req.ResponseFormat != "" {
+		body["response_format"] = req.ResponseFormat
+	}
+	if req.Watermark != nil {
+		body["watermark_enabled"] = *req.Watermark
+	}
+	if req.UserID != "" {
+		body["user_id"] = req.UserID
+	}
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal image request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/images/generations", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create image request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+
+	resp, err := a.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send image request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("image API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result openaiImageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode image response: %w", err)
+	}
+
+	images := make([]ImageData, len(result.Data))
+	for i, img := range result.Data {
+		images[i] = ImageData{
+			URL:           img.URL,
+			Base64:        img.B64JSON,
+			RevisedPrompt: img.RevisedPrompt,
+		}
+	}
+
+	return &ImageResponse{
+		ID:     result.ID,
+		Images: images,
+		Model:  req.Model,
+	}, nil
+}
+
 func (a *OpenAIAdapter) CountTokens(model string, messages []Message) (int, error) {
 	// Rough estimation: ~4 chars per token
 	totalChars := 0
@@ -325,9 +404,18 @@ type openaiStreamChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
-			Content           string `json:"content"`
-			ReasoningContent  string `json:"reasoning_content"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+}
+
+type openaiImageResponse struct {
+	ID   string `json:"id"`
+	Data []struct {
+		URL           string `json:"url"`
+		B64JSON       string `json:"b64_json"`
+		RevisedPrompt string `json:"revised_prompt"`
+	} `json:"data"`
 }

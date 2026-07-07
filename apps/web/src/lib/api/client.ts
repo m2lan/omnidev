@@ -399,6 +399,11 @@ class ApiClient {
     return this.get<ApiResponse<{ url: string }>>(`/api/v1/attachments/${id}/url`);
   }
 
+  // Image Generation
+  async generateImage(params: GenerateImageParams) {
+    return this.post<ApiResponse<GeneratedImageResult[]>>("/api/v1/images/generate", params);
+  }
+
   // User AI Configs
   async listAIConfigs() {
     return this.get<ApiResponse<UserAIConfig[]>>("/api/v1/user/ai-configs");
@@ -533,6 +538,7 @@ export interface Message {
   token_output?: number;
   latency_ms?: number;
   attachments?: Attachment[];
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 
@@ -667,6 +673,21 @@ export interface TestConnectionResult {
   success: boolean;
   message: string;
   latency_ms: number;
+}
+
+export interface GenerateImageParams {
+  conversation_id?: string;
+  model: string;
+  prompt: string;
+  size?: string;
+  quality?: string;
+  style?: string;
+  n?: number;
+}
+
+export interface GeneratedImageResult {
+  attachment: Attachment;
+  revised_prompt?: string;
 }
 
 export const api = new ApiClient();

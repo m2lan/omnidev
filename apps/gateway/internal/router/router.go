@@ -68,6 +68,9 @@ func Setup(
 			// Models
 			protected.GET("/models", chatHandler.ListModels)
 
+			// Image Generation
+			protected.POST("/images/generate", chatHandler.GenerateImage)
+
 			// Upload & Attachments
 			protected.POST("/upload", uploadHandler.Upload)
 			protected.GET("/attachments/:id", uploadHandler.GetAttachment)

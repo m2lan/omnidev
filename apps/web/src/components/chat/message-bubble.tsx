@@ -8,6 +8,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils";
 import type { Message, Attachment } from "@/lib/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { GeneratedImage } from "@/components/chat/image-generation-animation";
 
 interface MessageBubbleProps {
   message: Message;
@@ -115,6 +116,10 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
   const isUser = message.role === "user";
   const isStreaming = message.id === "streaming";
 
+  // Check if this is an image generation message
+  const isImageGeneration = !isUser && message.metadata?.type === "image-generation";
+  const hasImageAttachments = !isUser && message.attachments?.some((att) => att.mime_type.startsWith("image/"));
+
   // Truncate long messages for performance
   const MAX_LENGTH = 3000;
   const isLong = !isUser && !isStreaming && message.content.length > MAX_LENGTH;
@@ -177,9 +182,17 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
           {/* Attachments */}
           {message.attachments && message.attachments.length > 0 && (
             <div className={cn("flex flex-wrap gap-2 mb-2", isUser ? "justify-end" : "")}>
-              {message.attachments.map((att) => (
-                <AttachmentBadge key={att.id} attachment={att} isUser={isUser} />
-              ))}
+              {message.attachments.map((att) =>
+                isImageGeneration && att.mime_type.startsWith("image/") ? (
+                  <GeneratedImage
+                    key={att.id}
+                    attachment={att}
+                    prompt={message.content}
+                  />
+                ) : (
+                  <AttachmentBadge key={att.id} attachment={att} isUser={isUser} />
+                )
+              )}
             </div>
           )}
           {isUser ? (
