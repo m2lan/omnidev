@@ -18,6 +18,8 @@ export default function ChatPage() {
     sendingConversationIds,
     streamingStates,
     imageGeneration,
+    _scrollToBottom,
+    _loadingComplete,
     fetchConversations,
     createConversation,
     setActiveConversation,
@@ -99,6 +101,8 @@ export default function ChatPage() {
           hasConversation={!!activeConversationId}
           imageGeneration={imageGeneration}
           onGenerateImage={handleGenerateImage}
+          scrollToBottomTrigger={_scrollToBottom}
+          loadingCompleteTrigger={_loadingComplete}
         />
       </div>
     </div>

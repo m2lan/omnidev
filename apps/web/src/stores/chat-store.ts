@@ -29,6 +29,12 @@ interface ChatState {
   // Image generation state
   imageGeneration: ImageGenerationState;
 
+  // Scroll trigger (timestamp to force scroll to bottom)
+  _scrollToBottom?: number;
+
+  // Loading complete trigger (timestamp to force scroll after loading)
+  _loadingComplete?: number;
+
   // Actions
   fetchConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<Conversation>;
@@ -126,13 +132,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Try cache first, then server
     const cached = get().messagesCache[id];
     if (cached) {
-      set({ messages: cached, isLoading: false });
+      set({ messages: cached, isLoading: false, _loadingComplete: Date.now() });
       return;
     }
 
     try {
       const { data } = await api.listMessages(id, { page_size: 50 });
-      set({ messages: data || [], isLoading: false });
+      set({ messages: data || [], isLoading: false, _loadingComplete: Date.now() });
     } catch (err) {
       set({
         isLoading: false,
@@ -353,6 +359,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           set((state) => ({
             messages: state.activeConversationId === conversationId ? (msgs || []) : state.messages,
             messagesCache: { ...state.messagesCache, [conversationId]: msgs || [] },
+            // Trigger scroll to bottom after message reload
+            _scrollToBottom: Date.now(),
           }));
         } catch {
           // ignore reload errors

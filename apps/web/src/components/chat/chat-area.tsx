@@ -31,6 +31,10 @@ interface ChatAreaProps {
     error?: string;
   };
   onGenerateImage?: (params: GenerateImageParams) => Promise<void>;
+  // Scroll trigger
+  scrollToBottomTrigger?: number;
+  // Loading complete trigger (set after messages loaded and isLoading becomes false)
+  loadingCompleteTrigger?: number;
 }
 
 export function ChatArea({
@@ -47,23 +51,69 @@ export function ChatArea({
   hasConversation,
   imageGeneration,
   onGenerateImage,
+  scrollToBottomTrigger,
+  loadingCompleteTrigger,
 }: ChatAreaProps) {
   const [input, setInput] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isImageMode, setIsImageMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const justSentRef = useRef(false);
+  const prevMsgCountRef = useRef(0);
 
-  // Auto-scroll to bottom
+  const scrollToBottom = useCallback((force = false) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (!force) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+      if (!isNearBottom) return;
+    }
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  // Force scroll when messages first load (0 → N) or user just sent
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    // Also scroll after a delay to catch late-rendering images
-    const timer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [messages, streamingContent, imageGeneration?.isGenerating]);
+    const prevCount = prevMsgCountRef.current;
+    prevMsgCountRef.current = messages.length;
+
+    // First load or user just sent: force scroll
+    if (prevCount === 0 && messages.length > 0) {
+      return;
+    }
+    if (justSentRef.current) {
+      justSentRef.current = false;
+      scrollToBottom(true);
+      return;
+    }
+    // Otherwise smart scroll
+    scrollToBottom(false);
+  }, [messages, streamingContent, imageGeneration?.isGenerating, scrollToBottom]);
+
+  // Force scroll when loading completes or image generation finishes
+  useEffect(() => {
+    if (!loadingCompleteTrigger && !scrollToBottomTrigger) return;
+    if (messages.length === 0) return;
+
+    // Multi-pass scroll: rAF for layout, then delayed retries for lazy content
+    let cancelled = false;
+    const scrollNow = () => {
+      const container = scrollContainerRef.current;
+      if (container && container.scrollHeight > container.clientHeight) {
+        container.scrollTop = container.scrollHeight;
+      }
+    };
+    // Double rAF: wait for layout + paint
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!cancelled) scrollNow();
+    }));
+    // Fallback: markdown/code rendering may finish later
+    const t1 = setTimeout(() => { if (!cancelled) scrollNow(); }, 150);
+    const t2 = setTimeout(() => { if (!cancelled) scrollNow(); }, 400);
+    return () => { cancelled = true; clearTimeout(t1); clearTimeout(t2); };
+  }, [loadingCompleteTrigger, scrollToBottomTrigger, messages.length]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -100,6 +150,7 @@ export function ChatArea({
     if ((!hasContent && !hasAttachments) || isSending) return;
 
     const content = input.trim();
+    justSentRef.current = true;
 
     // Image generation mode
     if (isImageMode && onGenerateImage && hasContent) {
@@ -278,7 +329,7 @@ export function ChatArea({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="w-full mx-auto py-6 px-4 max-w-full break-words overflow-hidden">
           {/* Load more hint */}
           {messages.length >= 10 && (
