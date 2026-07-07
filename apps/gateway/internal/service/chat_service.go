@@ -16,6 +16,7 @@ import (
 	"github.com/omnidev/go-common/cache"
 	appErr "github.com/omnidev/go-common/errors"
 	"github.com/omnidev/go-common/logger"
+	"github.com/omnidev/go-common/parser"
 	"github.com/omnidev/go-common/storage"
 
 	"github.com/omnidev/gateway/internal/adapter"
@@ -37,6 +38,7 @@ type ChatService struct {
 	modelRepo      repository.ModelRepository
 	attRepo        repository.AttachmentRepository
 	minioCli       *storage.MinIO
+	parser         parser.Parser
 	adapters       *adapter.Registry
 	adapterFactory *adapter.Factory
 	userConfigRepo UserAIConfigRepository
@@ -72,6 +74,8 @@ func NewChatService(
 			svc.attRepo = v
 		case *storage.MinIO:
 			svc.minioCli = v
+		case parser.Parser:
+			svc.parser = v
 		}
 	}
 	return svc
@@ -228,7 +232,25 @@ func (s *ChatService) ListMessages(ctx context.Context, userID, convID uuid.UUID
 	}
 
 	offset := (page - 1) * pageSize
-	return s.msgRepo.ListByConversation(ctx, convID, offset, pageSize)
+	messages, total, err := s.msgRepo.ListByConversation(ctx, convID, offset, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Load attachments for each message
+	if s.attRepo != nil {
+		for _, msg := range messages {
+			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
+			if err == nil && len(attachments) > 0 {
+				msg.Attachments = make([]domain.Attachment, len(attachments))
+				for i, att := range attachments {
+					msg.Attachments[i] = *att
+				}
+			}
+		}
+	}
+
+	return messages, total, nil
 }
 
 // SendMessageInput defines the input for sending a message.
@@ -310,9 +332,9 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 							imageDataURLs = append(imageDataURLs, dataURL)
 						}
 					} else if att.IsDocument() {
-						data, err := s.downloadAttachment(ctx, att)
+						text, err := s.downloadAndParse(ctx, att)
 						if err == nil {
-							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
 						}
 					}
 				}
@@ -345,9 +367,9 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 							currentImageDataURLs = append(currentImageDataURLs, dataURL)
 						}
 					} else if att.IsDocument() {
-						data, err := s.downloadAttachment(ctx, att)
+						text, err := s.downloadAndParse(ctx, att)
 						if err == nil {
-							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
 						}
 					}
 				}
@@ -529,9 +551,9 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 							currentImageDataURLs = append(currentImageDataURLs, dataURL)
 						}
 					} else if att.IsDocument() {
-						data, err := s.downloadAttachment(ctx, att)
+						text, err := s.downloadAndParse(ctx, att)
 						if err == nil {
-							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
+							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
 						}
 					}
 				}
@@ -846,4 +868,53 @@ func (s *ChatService) downloadAttachment(ctx context.Context, att *domain.Attach
 	defer reader.Close()
 
 	return io.ReadAll(reader)
+}
+
+// downloadAndParse downloads a document and extracts text using the parser.
+func (s *ChatService) downloadAndParse(ctx context.Context, att *domain.Attachment) (string, error) {
+	if s.minioCli == nil {
+		return "", fmt.Errorf("minio not configured")
+	}
+
+	// If no parser configured, fall back to raw bytes
+	if s.parser == nil {
+		logger.Log.Warn("No parser configured, falling back to raw bytes",
+			zap.String("filename", att.Filename),
+		)
+		data, err := s.downloadAttachment(ctx, att)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+
+	// Download file from MinIO
+	reader, err := s.minioCli.Download(ctx, "chat", att.StorageKey)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	logger.Log.Info("Parsing document with Tika",
+		zap.String("filename", att.Filename),
+		zap.String("mime_type", att.MimeType),
+	)
+
+	// Parse document using Tika
+	result, err := s.parser.Parse(ctx, att.Filename, reader)
+	if err != nil {
+		logger.Log.Error("Failed to parse document",
+			zap.String("filename", att.Filename),
+			zap.Error(err),
+		)
+		return "", fmt.Errorf("failed to parse document: %w", err)
+	}
+
+	logger.Log.Info("Document parsed successfully",
+		zap.String("filename", att.Filename),
+		zap.Int("content_length", len(result.Content)),
+		zap.Int("pages", result.Pages),
+	)
+
+	return result.Content, nil
 }

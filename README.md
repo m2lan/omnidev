@@ -220,6 +220,12 @@ Key variables:
 | [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | Coding standards & workflow |
 | [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md) | Detailed milestone schedule |
 
+### Feature Documentation
+
+| Document | Description |
+|----------|-------------|
+| [File Upload & Multimodal](docs/features/file-upload-and-multimodal.md) | File upload, document parsing (Tika), multimodal messages |
+
 ## License
 
 [MIT](LICENSE)

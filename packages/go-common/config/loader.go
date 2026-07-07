@@ -167,6 +167,8 @@ func bindEnvVars(v *viper.Viper) {
 		"GOOGLE_CLIENT_ID":    "oauth.google.client_id",
 		"GOOGLE_CLIENT_SECRET": "oauth.google.client_secret",
 		"GOOGLE_REDIRECT_URL": "oauth.google.redirect_url",
+		"TIKA_ENDPOINT":       "tika.endpoint",
+		"TIKA_TIMEOUT":        "tika.timeout",
 	}
 
 	for env, key := range envMap {
@@ -225,6 +227,8 @@ func applyEnvFileOverrides(v *viper.Viper) {
 		"GOOGLE_CLIENT_ID":    "oauth.google.client_id",
 		"GOOGLE_CLIENT_SECRET": "oauth.google.client_secret",
 		"GOOGLE_REDIRECT_URL": "oauth.google.redirect_url",
+		"TIKA_ENDPOINT":       "tika.endpoint",
+		"TIKA_TIMEOUT":        "tika.timeout",
 	}
 
 	for envKey, cfgKey := range envMap {

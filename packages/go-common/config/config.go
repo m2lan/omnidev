@@ -21,6 +21,7 @@ type Config struct {
 	Security   SecurityConfig   `mapstructure:"security"`
 	Sandbox    SandboxConfig    `mapstructure:"sandbox"`
 	Telemetry  TelemetryConfig  `mapstructure:"telemetry"`
+	Tika       TikaConfig       `mapstructure:"tika"`
 }
 
 // AppConfig holds general application settings.
@@ -152,4 +153,10 @@ type SandboxConfig struct {
 // TelemetryConfig holds OpenTelemetry settings.
 type TelemetryConfig struct {
 	OTLPEndpoint string `mapstructure:"otlp_endpoint"`
+}
+
+// TikaConfig holds Apache Tika settings.
+type TikaConfig struct {
+	Endpoint string `mapstructure:"endpoint"` // e.g., http://localhost:9998
+	Timeout  int    `mapstructure:"timeout"`  // Request timeout in seconds
 }

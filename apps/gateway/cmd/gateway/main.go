@@ -20,6 +20,7 @@ import (
 	"github.com/omnidev/go-common/database"
 	"github.com/omnidev/go-common/logger"
 	"github.com/omnidev/go-common/middleware"
+	"github.com/omnidev/go-common/parser"
 	"github.com/omnidev/go-common/storage"
 	"github.com/omnidev/go-common/telemetry"
 
@@ -112,6 +113,22 @@ func main() {
 		logger.Log.Warn("Failed to connect to MinIO, file upload disabled", zap.Error(err))
 	}
 
+	// Initialize Tika parser
+	var docParser parser.Parser
+	if cfg.Tika.Endpoint != "" {
+		tikaClient := parser.NewTikaClient(parser.TikaConfig{
+			Endpoint: cfg.Tika.Endpoint,
+			Timeout:  cfg.Tika.Timeout,
+		})
+		// Wrap with caching if Redis is available
+		if redisClient != nil {
+			docParser = parser.NewCachedParser(tikaClient, redisClient.Client, 0)
+		} else {
+			docParser = tikaClient
+		}
+		logger.Log.Info("Tika parser initialized", zap.String("endpoint", cfg.Tika.Endpoint))
+	}
+
 	// Initialize AI adapters (only register providers with API keys)
 	adapterRegistry := adapter.NewRegistry()
 	if cfg.AI.OpenAI.APIKey != "" {
@@ -141,7 +158,7 @@ func main() {
 	adapterFactory := adapter.NewFactory(encryptor)
 
 	// Initialize services
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient)
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser)
 
 	// Initialize upload service (if MinIO is available)
 	var uploadService *service.UploadService

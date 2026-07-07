@@ -145,6 +145,19 @@ services:
     depends_on:
       - temporal
 
+  # --- Apache Tika (document parser) ---
+  tika:
+    image: apache/tika:latest
+    container_name: omnidev-tika
+    restart: unless-stopped
+    ports:
+      - "9998:9998"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9998/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   postgres_data:
   redis_data:
