@@ -80,6 +80,25 @@ export function GeneratedImage({ attachment, prompt }: GeneratedImageProps) {
   const [loaded, setLoaded] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const resp = await fetch(attachment.storage_url);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = attachment.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback: open in new tab
+      window.open(attachment.storage_url, "_blank");
+    }
+  };
+
   return (
     <>
       <div
@@ -92,7 +111,7 @@ export function GeneratedImage({ attachment, prompt }: GeneratedImageProps) {
         onClick={() => setExpanded(!expanded)}
       >
         {/* Image with blur-to-clear reveal */}
-        <div className="relative overflow-hidden">
+        <div className="relative overflow-hidden group">
           <img
             src={attachment.storage_url}
             alt={prompt || attachment.filename}
@@ -110,6 +129,15 @@ export function GeneratedImage({ attachment, prompt }: GeneratedImageProps) {
               <div className="text-2xl image-gen-icon-pulse">✨</div>
             </div>
           )}
+
+          {/* Download button */}
+          <button
+            onClick={handleDownload}
+            className="absolute bottom-2 right-2 p-1.5 rounded-md bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
+            title="Save image"
+          >
+            ⬇
+          </button>
         </div>
 
         {/* Prompt caption */}
@@ -131,6 +159,12 @@ export function GeneratedImage({ attachment, prompt }: GeneratedImageProps) {
             alt={prompt || attachment.filename}
             className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
           />
+          <button
+            onClick={handleDownload}
+            className="absolute top-4 right-4 px-3 py-1.5 rounded-md bg-white/20 text-white text-sm hover:bg-white/30 transition-colors"
+          >
+            ⬇ Save
+          </button>
         </div>
       )}
     </>
