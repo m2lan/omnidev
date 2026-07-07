@@ -1,3 +1,5 @@
+// Ownership: Will move to services/model-service when microservices are extracted.
+// Currently shared by gateway BFF layer.
 package repository
 
 import (

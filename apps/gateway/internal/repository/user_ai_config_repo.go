@@ -1,3 +1,5 @@
+// Ownership: Will move to services/ai-config-service when microservices are extracted.
+// Currently shared by gateway BFF layer.
 package repository
 
 import (

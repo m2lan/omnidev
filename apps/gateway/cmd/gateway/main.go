@@ -158,7 +158,11 @@ func main() {
 	adapterFactory := adapter.NewFactory(encryptor)
 
 	// Initialize services
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterFactory, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser)
+	adapterResolver := service.NewAdapterResolver(userAIConfigRepo, adapterFactory, adapterRegistry)
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser)
+	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
+	imageService := service.NewImageService(adapterResolver, attRepository, convRepository, msgRepository, minioClient)
+	userAIConfigService := service.NewUserAIConfigService(userAIConfigRepo, encryptor)
 
 	// Initialize upload service (if MinIO is available)
 	var uploadService *service.UploadService
@@ -169,8 +173,8 @@ func main() {
 	// Initialize handlers
 	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
 	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
-	chatHandler := handler.NewChatHandler(chatService)
-	userAIConfigHandler := handler.NewUserAIConfigProxyHandler("", userAIConfigRepo, encryptor)
+	chatHandler := handler.NewChatHandler(convService, chatService, imageService)
+	userAIConfigHandler := handler.NewUserAIConfigProxyHandler(userAIConfigService)
 	var uploadHandler *handler.UploadHandler
 	if uploadService != nil {
 		uploadHandler = handler.NewUploadHandler(uploadService)

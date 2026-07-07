@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	gohttp "net/http"
 	"strings"
 	"time"
 
@@ -25,26 +24,19 @@ import (
 	"github.com/omnidev/gateway/internal/repository"
 )
 
-// UserAIConfigRepository defines the interface for fetching user AI configs.
-type UserAIConfigRepository interface {
-	GetByUserAndProvider(ctx context.Context, userID uuid.UUID, provider string) (*adapter.UserAIConfig, error)
-	ListByUserID(ctx context.Context, userID uuid.UUID) ([]*adapter.UserAIConfig, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*adapter.UserAIConfig, error)
-}
-
-// ChatService handles chat operations.
+// ChatService handles message sending and streaming operations.
 type ChatService struct {
-	convRepo       repository.ConversationRepository
-	msgRepo        repository.MessageRepository
-	modelRepo      repository.ModelRepository
-	attRepo        repository.AttachmentRepository
-	minioCli       *storage.MinIO
-	parser         parser.Parser
-	adapters       *adapter.Registry
-	adapterFactory *adapter.Factory
-	userConfigRepo UserAIConfigRepository
-	cache          *cache.Redis
-	defaultModel   string
+	convRepo        repository.ConversationRepository
+	msgRepo         repository.MessageRepository
+	modelRepo       repository.ModelRepository
+	attRepo         repository.AttachmentRepository
+	minioCli        *storage.MinIO
+	parser          parser.Parser
+	adapters        *adapter.Registry
+	adapterResolver *AdapterResolver
+	userConfigRepo  repository.UserAIConfigRepository
+	cache           *cache.Redis
+	defaultModel    string
 }
 
 // NewChatService creates a new chat service.
@@ -53,21 +45,21 @@ func NewChatService(
 	msgRepo repository.MessageRepository,
 	modelRepo repository.ModelRepository,
 	adapters *adapter.Registry,
-	adapterFactory *adapter.Factory,
-	userConfigRepo UserAIConfigRepository,
+	adapterResolver *AdapterResolver,
+	userConfigRepo repository.UserAIConfigRepository,
 	cache *cache.Redis,
 	defaultModel string,
 	opts ...interface{},
 ) *ChatService {
 	svc := &ChatService{
-		convRepo:       convRepo,
-		msgRepo:        msgRepo,
-		modelRepo:      modelRepo,
-		adapters:       adapters,
-		adapterFactory: adapterFactory,
-		userConfigRepo: userConfigRepo,
-		cache:          cache,
-		defaultModel:   defaultModel,
+		convRepo:        convRepo,
+		msgRepo:         msgRepo,
+		modelRepo:       modelRepo,
+		adapters:        adapters,
+		adapterResolver: adapterResolver,
+		userConfigRepo:  userConfigRepo,
+		cache:           cache,
+		defaultModel:    defaultModel,
 	}
 	for _, opt := range opts {
 		switch v := opt.(type) {
@@ -82,183 +74,11 @@ func NewChatService(
 	return svc
 }
 
-// CreateConversationInput defines the input for creating a conversation.
-type CreateConversationInput struct {
-	Title        string                 `json:"title"`
-	ModelID      string                 `json:"model_id"`
-	SystemPrompt string                 `json:"system_prompt"`
-	Tags         []string               `json:"tags"`
-	Settings     map[string]interface{} `json:"settings"`
-}
-
-// CreateConversation creates a new conversation.
-func (s *ChatService) CreateConversation(ctx context.Context, userID uuid.UUID, input *CreateConversationInput) (*domain.Conversation, error) {
-	conv := &domain.Conversation{
-		ID:       uuid.New(),
-		UserID:   userID,
-		Status:   domain.ConversationStatusActive,
-		Tags:     input.Tags,
-		Settings: input.Settings,
-		Metadata: map[string]interface{}{},
-	}
-
-	if input.Title != "" {
-		conv.Title = &input.Title
-	}
-	if input.SystemPrompt != "" {
-		conv.SystemPrompt = &input.SystemPrompt
-	}
-	if input.Settings == nil {
-		conv.Settings = map[string]interface{}{}
-	}
-	if input.Tags == nil {
-		conv.Tags = []string{}
-	}
-
-	if err := s.convRepo.Create(ctx, conv); err != nil {
-		return nil, appErr.Wrap(err, "failed to create conversation")
-	}
-
-	return conv, nil
-}
-
-// GetConversation returns a conversation by ID.
-func (s *ChatService) GetConversation(ctx context.Context, userID, convID uuid.UUID) (*domain.Conversation, error) {
-	conv, err := s.convRepo.GetByID(ctx, convID)
-	if err != nil {
-		return nil, appErr.NotFound("conversation")
-	}
-
-	if conv.UserID != userID {
-		return nil, appErr.ErrForbidden
-	}
-
-	return conv, nil
-}
-
-// ListConversationsInput defines filters for listing conversations.
-type ListConversationsInput struct {
-	Status   string `form:"status"`
-	ModelID  string `form:"model_id"`
-	Search   string `form:"search"`
-	Page     int    `form:"page"`
-	PageSize int    `form:"page_size"`
-}
-
-// ListConversations returns a paginated list of conversations.
-func (s *ChatService) ListConversations(ctx context.Context, userID uuid.UUID, input *ListConversationsInput) ([]*domain.Conversation, int, error) {
-	if input.Page < 1 {
-		input.Page = 1
-	}
-	if input.PageSize < 1 || input.PageSize > 100 {
-		input.PageSize = 20
-	}
-
-	filter := &repository.ConversationFilter{
-		Search: input.Search,
-	}
-
-	if input.Status != "" {
-		status := domain.ConversationStatus(input.Status)
-		filter.Status = &status
-	}
-
-	offset := (input.Page - 1) * input.PageSize
-	return s.convRepo.List(ctx, userID, filter, offset, input.PageSize)
-}
-
-// UpdateConversationInput defines fields for updating a conversation.
-type UpdateConversationInput struct {
-	Title        *string `json:"title"`
-	SystemPrompt *string `json:"system_prompt"`
-	Status       *string `json:"status"`
-	Pinned       *bool   `json:"pinned"`
-}
-
-// UpdateConversation updates a conversation.
-func (s *ChatService) UpdateConversation(ctx context.Context, userID, convID uuid.UUID, input *UpdateConversationInput) (*domain.Conversation, error) {
-	conv, err := s.convRepo.GetByID(ctx, convID)
-	if err != nil {
-		return nil, appErr.NotFound("conversation")
-	}
-	if conv.UserID != userID {
-		return nil, appErr.ErrForbidden
-	}
-
-	update := &repository.ConversationUpdate{
-		Title:        input.Title,
-		SystemPrompt: input.SystemPrompt,
-		Pinned:       input.Pinned,
-	}
-	if input.Status != nil {
-		status := domain.ConversationStatus(*input.Status)
-		update.Status = &status
-	}
-
-	if err := s.convRepo.Update(ctx, convID, update); err != nil {
-		return nil, appErr.Wrap(err, "failed to update conversation")
-	}
-
-	return s.convRepo.GetByID(ctx, convID)
-}
-
-// DeleteConversation soft-deletes a conversation.
-func (s *ChatService) DeleteConversation(ctx context.Context, userID, convID uuid.UUID) error {
-	conv, err := s.convRepo.GetByID(ctx, convID)
-	if err != nil {
-		return appErr.NotFound("conversation")
-	}
-	if conv.UserID != userID {
-		return appErr.ErrForbidden
-	}
-
-	return s.convRepo.Delete(ctx, convID)
-}
-
-// ListMessages returns messages in a conversation.
-func (s *ChatService) ListMessages(ctx context.Context, userID, convID uuid.UUID, page, pageSize int) ([]*domain.Message, int, error) {
-	conv, err := s.convRepo.GetByID(ctx, convID)
-	if err != nil {
-		return nil, 0, appErr.NotFound("conversation")
-	}
-	if conv.UserID != userID {
-		return nil, 0, appErr.ErrForbidden
-	}
-
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 50
-	}
-
-	offset := (page - 1) * pageSize
-	messages, total, err := s.msgRepo.ListByConversation(ctx, convID, offset, pageSize)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Load attachments for each message
-	if s.attRepo != nil {
-		for _, msg := range messages {
-			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
-			if err == nil && len(attachments) > 0 {
-				msg.Attachments = make([]domain.Attachment, len(attachments))
-				for i, att := range attachments {
-					msg.Attachments[i] = *att
-				}
-			}
-		}
-	}
-
-	return messages, total, nil
-}
-
 // SendMessageInput defines the input for sending a message.
 type SendMessageInput struct {
-	Content       string    `json:"content" validate:"required"`
-	ModelID       string    `json:"model_id"`
-	AttachmentIDs []string  `json:"attachment_ids,omitempty"`
+	Content       string   `json:"content" validate:"required"`
+	ModelID       string   `json:"model_id"`
+	AttachmentIDs []string `json:"attachment_ids,omitempty"`
 }
 
 // SendMessage sends a message and returns the AI response.
@@ -315,89 +135,10 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 	}
 
 	// Build adapter messages
-	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
-	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
-	}
-	for _, msg := range recentMsgs {
-		// Check if message has attachments
-		var imageDataURLs []string
-		var docContents []string
-		if s.attRepo != nil {
-			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
-			if err == nil {
-				for _, att := range attachments {
-					if att.IsImage() {
-						dataURL, err := s.imageToBase64(ctx, att)
-						if err == nil {
-							imageDataURLs = append(imageDataURLs, dataURL)
-						}
-					} else if att.IsDocument() {
-						text, err := s.downloadAndParse(ctx, att)
-						if err == nil {
-							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
-						}
-					}
-				}
-			}
-		}
+	adapterMsgs := s.buildAdapterMessages(ctx, conv, recentMsgs, input)
 
-		content := msg.Content
-		if len(docContents) > 0 {
-			content += strings.Join(docContents, "")
-		}
-
-		if len(imageDataURLs) > 0 {
-			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), content, imageDataURLs))
-		} else {
-			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), content))
-		}
-	}
-
-	// Also check current message attachments
-	var currentImageDataURLs []string
-	var currentDocContents []string
-	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
-		for _, idStr := range input.AttachmentIDs {
-			if id, err := uuid.Parse(idStr); err == nil {
-				att, err := s.attRepo.GetByID(ctx, id)
-				if err == nil {
-					if att.IsImage() {
-						dataURL, err := s.imageToBase64(ctx, att)
-						if err == nil {
-							currentImageDataURLs = append(currentImageDataURLs, dataURL)
-						}
-					} else if att.IsDocument() {
-						text, err := s.downloadAndParse(ctx, att)
-						if err == nil {
-							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Build final content for current message
-	currentContent := input.Content
-	if len(currentDocContents) > 0 {
-		currentContent += strings.Join(currentDocContents, "")
-	}
-
-	// Update the last user message in adapterMsgs
-	if (len(currentImageDataURLs) > 0 || len(currentDocContents) > 0) && len(adapterMsgs) > 0 {
-		lastIdx := len(adapterMsgs) - 1
-		if adapterMsgs[lastIdx].Role == "user" {
-			if len(currentImageDataURLs) > 0 {
-				adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", currentContent, currentImageDataURLs)
-			} else {
-				adapterMsgs[lastIdx] = adapter.NewTextMessage("user", currentContent)
-			}
-		}
-	}
-
-	// Get adapter (user config first, then global)
-	aiAdapter, err := s.resolveAdapter(ctx, userID, modelID)
+	// Get adapter via resolver
+	aiAdapter, err := s.adapterResolver.Resolve(ctx, userID, modelID)
 	if err != nil {
 		return nil, nil, appErr.Validation("unsupported model: " + modelID)
 	}
@@ -498,89 +239,11 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		return nil, nil, appErr.Wrap(err, "failed to get context")
 	}
 
-	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
-	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
-		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
-	}
-	for _, msg := range recentMsgs {
-		// Check if message has attachments
-		var imageDataURLs []string
-		var docContents []string
-		if s.attRepo != nil {
-			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
-			if err == nil {
-				for _, att := range attachments {
-					if att.IsImage() {
-						dataURL, err := s.imageToBase64(ctx, att)
-						if err == nil {
-							imageDataURLs = append(imageDataURLs, dataURL)
-						}
-					} else if att.IsDocument() {
-						// Download and extract text from document
-						data, err := s.downloadAttachment(ctx, att)
-						if err == nil {
-							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, string(data)))
-						}
-					}
-				}
-			}
-		}
+	// Build adapter messages
+	adapterMsgs := s.buildAdapterMessages(ctx, conv, recentMsgs, input)
 
-		content := msg.Content
-		if len(docContents) > 0 {
-			content += strings.Join(docContents, "")
-		}
-
-		if len(imageDataURLs) > 0 {
-			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), content, imageDataURLs))
-		} else {
-			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), content))
-		}
-	}
-
-	// Also check current message attachments
-	var currentImageDataURLs []string
-	var currentDocContents []string
-	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
-		for _, idStr := range input.AttachmentIDs {
-			if id, err := uuid.Parse(idStr); err == nil {
-				att, err := s.attRepo.GetByID(ctx, id)
-				if err == nil {
-					if att.IsImage() {
-						dataURL, err := s.imageToBase64(ctx, att)
-						if err == nil {
-							currentImageDataURLs = append(currentImageDataURLs, dataURL)
-						}
-					} else if att.IsDocument() {
-						text, err := s.downloadAndParse(ctx, att)
-						if err == nil {
-							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Build final content for current message
-	currentContent := input.Content
-	if len(currentDocContents) > 0 {
-		currentContent += strings.Join(currentDocContents, "")
-	}
-
-	// Update the last user message in adapterMsgs
-	if (len(currentImageDataURLs) > 0 || len(currentDocContents) > 0) && len(adapterMsgs) > 0 {
-		lastIdx := len(adapterMsgs) - 1
-		if adapterMsgs[lastIdx].Role == "user" {
-			if len(currentImageDataURLs) > 0 {
-				adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", currentContent, currentImageDataURLs)
-			} else {
-				adapterMsgs[lastIdx] = adapter.NewTextMessage("user", currentContent)
-			}
-		}
-	}
-
-	aiAdapter, err := s.resolveAdapter(ctx, userID, modelID)
+	// Get adapter via resolver
+	aiAdapter, err := s.adapterResolver.Resolve(ctx, userID, modelID)
 	if err != nil {
 		return nil, nil, appErr.Validation("unsupported model: " + modelID)
 	}
@@ -664,11 +327,11 @@ func (s *ChatService) ListAvailableModels() []map[string]interface{} {
 	var models []map[string]interface{}
 	id := 0
 	for _, provider := range s.adapters.Providers() {
-		adapter, err := s.adapters.Get(provider)
+		adp, err := s.adapters.Get(provider)
 		if err != nil {
 			continue
 		}
-		for _, modelID := range adapter.Models() {
+		for _, modelID := range adp.Models() {
 			id++
 			models = append(models, map[string]interface{}{
 				"id":           fmt.Sprintf("%d", id),
@@ -740,63 +403,90 @@ func (s *ChatService) ListAvailableModelsForUser(ctx context.Context, userID uui
 	return models
 }
 
-// resolveAdapter resolves an adapter for a model, checking user configs first.
-func (s *ChatService) resolveAdapter(ctx context.Context, userID uuid.UUID, modelID string) (adapter.Adapter, error) {
-	// Try to find a user config that has this model
-	if s.userConfigRepo != nil && s.adapterFactory != nil {
-		userConfigs, err := s.userConfigRepo.ListByUserID(ctx, userID)
-		if err == nil {
-			// First pass: look for exact model match
-			for _, cfg := range userConfigs {
-				for _, m := range cfg.Models {
-					if m == modelID {
-						adp, err := s.adapterFactory.CreateAdapter(cfg)
-						if err != nil {
-							logger.Log.Warn("Failed to create adapter from user config",
-								zap.String("provider", cfg.Provider),
-								zap.Error(err),
-							)
-							continue
+// buildAdapterMessages converts domain messages to adapter messages with multimodal support.
+func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Conversation, recentMsgs []*domain.Message, input *SendMessageInput) []adapter.Message {
+	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
+	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
+		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
+	}
+
+	for _, msg := range recentMsgs {
+		var imageDataURLs []string
+		var docContents []string
+		if s.attRepo != nil {
+			attachments, err := s.attRepo.ListByMessage(ctx, msg.ID)
+			if err == nil {
+				for _, att := range attachments {
+					if att.IsImage() {
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							imageDataURLs = append(imageDataURLs, dataURL)
 						}
-						return adp, nil
+					} else if att.IsDocument() {
+						text, err := s.downloadAndParse(ctx, att)
+						if err == nil {
+							docContents = append(docContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
+						}
 					}
 				}
 			}
+		}
 
-			// Second pass: use default config with empty models (supports all models)
-			for _, cfg := range userConfigs {
-				if cfg.IsDefault && len(cfg.Models) == 0 {
-					adp, err := s.adapterFactory.CreateAdapter(cfg)
-					if err != nil {
-						logger.Log.Warn("Failed to create adapter from default config",
-							zap.String("provider", cfg.Provider),
-							zap.Error(err),
-						)
-						break
-					}
-					return adp, nil
-				}
-			}
+		content := msg.Content
+		if len(docContents) > 0 {
+			content += strings.Join(docContents, "")
+		}
 
-			// Third pass: use any config with empty models
-			for _, cfg := range userConfigs {
-				if len(cfg.Models) == 0 {
-					adp, err := s.adapterFactory.CreateAdapter(cfg)
-					if err != nil {
-						logger.Log.Warn("Failed to create adapter from config",
-							zap.String("provider", cfg.Provider),
-							zap.Error(err),
-						)
-						continue
+		if len(imageDataURLs) > 0 {
+			adapterMsgs = append(adapterMsgs, adapter.NewMultimodalMessage(string(msg.Role), content, imageDataURLs))
+		} else {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage(string(msg.Role), content))
+		}
+	}
+
+	// Also check current message attachments
+	var currentImageDataURLs []string
+	var currentDocContents []string
+	if len(input.AttachmentIDs) > 0 && s.attRepo != nil {
+		for _, idStr := range input.AttachmentIDs {
+			if id, err := uuid.Parse(idStr); err == nil {
+				att, err := s.attRepo.GetByID(ctx, id)
+				if err == nil {
+					if att.IsImage() {
+						dataURL, err := s.imageToBase64(ctx, att)
+						if err == nil {
+							currentImageDataURLs = append(currentImageDataURLs, dataURL)
+						}
+					} else if att.IsDocument() {
+						text, err := s.downloadAndParse(ctx, att)
+						if err == nil {
+							currentDocContents = append(currentDocContents, fmt.Sprintf("\n\n[附件: %s]\n%s", att.Filename, text))
+						}
 					}
-					return adp, nil
 				}
 			}
 		}
 	}
 
-	// Fallback to global registry
-	return s.adapters.GetForModel(modelID)
+	// Build final content for current message
+	currentContent := input.Content
+	if len(currentDocContents) > 0 {
+		currentContent += strings.Join(currentDocContents, "")
+	}
+
+	// Update the last user message in adapterMsgs
+	if (len(currentImageDataURLs) > 0 || len(currentDocContents) > 0) && len(adapterMsgs) > 0 {
+		lastIdx := len(adapterMsgs) - 1
+		if adapterMsgs[lastIdx].Role == "user" {
+			if len(currentImageDataURLs) > 0 {
+				adapterMsgs[lastIdx] = adapter.NewMultimodalMessage("user", currentContent, currentImageDataURLs)
+			} else {
+				adapterMsgs[lastIdx] = adapter.NewTextMessage("user", currentContent)
+			}
+		}
+	}
+
+	return adapterMsgs
 }
 
 // emitUsageEvent publishes a usage event for billing.
@@ -869,202 +559,6 @@ func (s *ChatService) downloadAttachment(ctx context.Context, att *domain.Attach
 	defer reader.Close()
 
 	return io.ReadAll(reader)
-}
-
-// GenerateImageInput defines the input for image generation.
-type GenerateImageInput struct {
-	ConversationID string `json:"conversation_id"`
-	Model          string `json:"model" validate:"required"`
-	Prompt         string `json:"prompt" validate:"required"`
-	Size           string `json:"size,omitempty"`
-	Quality        string `json:"quality,omitempty"`
-	Style          string `json:"style,omitempty"`
-	N              int    `json:"n,omitempty"`
-	Watermark      *bool  `json:"watermark_enabled,omitempty"`
-}
-
-// GenerateImageResult represents the result of image generation.
-type GenerateImageResult struct {
-	Attachment *domain.Attachment `json:"attachment"`
-	RevisedPrompt string          `json:"revised_prompt,omitempty"`
-}
-
-// GenerateImage generates an image using an AI model and stores it in MinIO.
-func (s *ChatService) GenerateImage(ctx context.Context, userID uuid.UUID, input *GenerateImageInput) ([]*GenerateImageResult, error) {
-	// Resolve adapter
-	aiAdapter, err := s.resolveAdapter(ctx, userID, input.Model)
-	if err != nil {
-		return nil, appErr.Validation("unsupported model: " + input.Model)
-	}
-
-	// Check if adapter supports image generation
-	imgGen, ok := aiAdapter.(adapter.ImageGenerator)
-	if !ok {
-		return nil, appErr.Validation("model does not support image generation: " + input.Model)
-	}
-
-	// Set defaults
-	n := input.N
-	if n <= 0 {
-		n = 1
-	}
-	size := input.Size
-	if size == "" {
-		size = "1024x1024"
-	}
-
-	// Default watermark to false (try without watermark for free models)
-	watermark := false
-	if input.Watermark != nil {
-		watermark = *input.Watermark
-	}
-
-	// Call image generation API
-	resp, err := imgGen.GenerateImage(ctx, &adapter.ImageRequest{
-		Model:     input.Model,
-		Prompt:    input.Prompt,
-		N:         n,
-		Size:      size,
-		Quality:   input.Quality,
-		Style:     input.Style,
-		Watermark: &watermark,
-	})
-	if err != nil {
-		logger.Log.Error("Image generation failed", zap.Error(err), zap.String("model", input.Model))
-		return nil, appErr.Wrap(err, "image generation failed")
-	}
-
-	if len(resp.Images) == 0 {
-		return nil, appErr.New(500, "no images returned from generation")
-	}
-
-	// Store each generated image
-	var results []*GenerateImageResult
-	for _, img := range resp.Images {
-		var imageData []byte
-
-		if img.Base64 != "" {
-			imageData, err = base64.StdEncoding.DecodeString(img.Base64)
-			if err != nil {
-				logger.Log.Warn("Failed to decode base64 image", zap.Error(err))
-				continue
-			}
-		} else if img.URL != "" {
-			httpResp, err := gohttp.Get(img.URL)
-			if err != nil {
-				logger.Log.Warn("Failed to download generated image", zap.String("url", img.URL), zap.Error(err))
-				continue
-			}
-			imageData, err = io.ReadAll(httpResp.Body)
-			httpResp.Body.Close()
-			if err != nil {
-				logger.Log.Warn("Failed to read image data", zap.Error(err))
-				continue
-			}
-		} else {
-			continue
-		}
-
-		if s.minioCli == nil {
-			return nil, appErr.New(500, "storage not configured")
-		}
-
-		filename := fmt.Sprintf("generated_%s.png", uuid.New().String()[:8])
-		objectKey := fmt.Sprintf("images/%s/%s", userID.String(), filename)
-
-		// Upload to MinIO
-		if _, err := s.minioCli.UploadBytes(ctx, "chat", objectKey, imageData, "image/png"); err != nil {
-			logger.Log.Warn("Failed to upload image to storage", zap.Error(err))
-			continue
-		}
-
-		// Generate presigned URL (7 days)
-		presignedURL, err := s.minioCli.GetPresignedURL(ctx, "chat", objectKey, 7*24*time.Hour)
-		if err != nil {
-			logger.Log.Warn("Failed to generate presigned URL", zap.Error(err))
-			continue
-		}
-
-		// Save attachment record
-		att := &domain.Attachment{
-			ID:         uuid.New(),
-			UserID:     userID,
-			Filename:   filename,
-			MimeType:   "image/png",
-			FileSize:   int64(len(imageData)),
-			StorageKey: objectKey,
-			StorageURL: presignedURL,
-			Metadata:   map[string]interface{}{"source": "ai-generated", "model": input.Model},
-		}
-
-		if err := s.attRepo.Create(ctx, att); err != nil {
-			logger.Log.Warn("Failed to save attachment record", zap.Error(err))
-		}
-
-		results = append(results, &GenerateImageResult{
-			Attachment:    att,
-			RevisedPrompt: img.RevisedPrompt,
-		})
-	}
-
-	if len(results) == 0 {
-		return nil, appErr.New(500, "failed to store any generated images")
-	}
-
-	// Persist messages to conversation if conversationID provided
-	if input.ConversationID != "" {
-		convID, err := uuid.Parse(input.ConversationID)
-		if err == nil {
-			// Save user message
-			userMsg := &domain.Message{
-				ID:             uuid.New(),
-				ConversationID: convID,
-				Role:           domain.MessageRoleUser,
-				Content:        fmt.Sprintf("🎨 %s", input.Prompt),
-				Metadata:       map[string]interface{}{"type": "image-generation"},
-			}
-			if err := s.msgRepo.Create(ctx, userMsg); err != nil {
-				logger.Log.Warn("Failed to save user message for image generation", zap.Error(err))
-			}
-
-			// Save assistant message with attachments
-			assistantMsg := &domain.Message{
-				ID:             uuid.New(),
-				ConversationID: convID,
-				Role:           domain.MessageRoleAssistant,
-				Content:        input.Prompt,
-				ModelID:        &input.Model,
-				Metadata:       map[string]interface{}{"type": "image-generation", "model": input.Model},
-			}
-			if err := s.msgRepo.Create(ctx, assistantMsg); err != nil {
-				logger.Log.Warn("Failed to save assistant message for image generation", zap.Error(err))
-			}
-
-			// Link attachments to assistant message
-			attIDs := make([]uuid.UUID, 0, len(results))
-			for _, r := range results {
-				attIDs = append(attIDs, r.Attachment.ID)
-			}
-			if len(attIDs) > 0 {
-				if err := s.attRepo.UpdateMessageID(ctx, attIDs, assistantMsg.ID); err != nil {
-					logger.Log.Warn("Failed to link attachments to message", zap.Error(err))
-				}
-			}
-
-			// Update conversation
-			_ = s.convRepo.IncrementMessageCount(ctx, convID) // user msg
-			_ = s.convRepo.IncrementMessageCount(ctx, convID) // assistant msg
-
-			// Auto-generate title
-			conv, err := s.convRepo.GetByID(ctx, convID)
-			if err == nil && (conv.Title == nil || *conv.Title == "") {
-				title := fmt.Sprintf("🎨 %s", generateTitle(input.Prompt))
-				_ = s.convRepo.Update(ctx, convID, &repository.ConversationUpdate{Title: &title})
-			}
-		}
-	}
-
-	return results, nil
 }
 
 // downloadAndParse downloads a document and extracts text using the parser.

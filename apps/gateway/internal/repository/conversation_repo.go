@@ -1,4 +1,7 @@
 // Package repository provides data access implementations for the Gateway.
+//
+// Ownership: Will move to services/conversation-service when microservices are extracted.
+// Currently shared by gateway BFF layer.
 package repository
 
 import (

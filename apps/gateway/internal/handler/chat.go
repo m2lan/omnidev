@@ -19,12 +19,22 @@ import (
 
 // ChatHandler handles chat endpoints.
 type ChatHandler struct {
-	chatSvc *service.ChatService
+	convSvc  *service.ConversationService
+	chatSvc  *service.ChatService
+	imageSvc *service.ImageService
 }
 
 // NewChatHandler creates a new chat handler.
-func NewChatHandler(chatSvc *service.ChatService) *ChatHandler {
-	return &ChatHandler{chatSvc: chatSvc}
+func NewChatHandler(
+	convSvc *service.ConversationService,
+	chatSvc *service.ChatService,
+	imageSvc *service.ImageService,
+) *ChatHandler {
+	return &ChatHandler{
+		convSvc:  convSvc,
+		chatSvc:  chatSvc,
+		imageSvc: imageSvc,
+	}
 }
 
 // ListConversations returns a paginated list of conversations.
@@ -44,7 +54,7 @@ func (h *ChatHandler) ListConversations(c *gin.Context) {
 		PageSize: chatQueryInt(c, "page_size", 20),
 	}
 
-	convs, total, err := h.chatSvc.ListConversations(c.Request.Context(), userID, input)
+	convs, total, err := h.convSvc.ListConversations(c.Request.Context(), userID, input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -75,7 +85,7 @@ func (h *ChatHandler) CreateConversation(c *gin.Context) {
 		return
 	}
 
-	conv, err := h.chatSvc.CreateConversation(c.Request.Context(), userID, &input)
+	conv, err := h.convSvc.CreateConversation(c.Request.Context(), userID, &input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -99,7 +109,7 @@ func (h *ChatHandler) GetConversation(c *gin.Context) {
 		return
 	}
 
-	conv, err := h.chatSvc.GetConversation(c.Request.Context(), userID, convID)
+	conv, err := h.convSvc.GetConversation(c.Request.Context(), userID, convID)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -129,7 +139,7 @@ func (h *ChatHandler) UpdateConversation(c *gin.Context) {
 		return
 	}
 
-	conv, err := h.chatSvc.UpdateConversation(c.Request.Context(), userID, convID, &input)
+	conv, err := h.convSvc.UpdateConversation(c.Request.Context(), userID, convID, &input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -153,7 +163,7 @@ func (h *ChatHandler) DeleteConversation(c *gin.Context) {
 		return
 	}
 
-	if err := h.chatSvc.DeleteConversation(c.Request.Context(), userID, convID); err != nil {
+	if err := h.convSvc.DeleteConversation(c.Request.Context(), userID, convID); err != nil {
 		chatHandleError(c, err)
 		return
 	}
@@ -179,7 +189,7 @@ func (h *ChatHandler) ListMessages(c *gin.Context) {
 	page := chatQueryInt(c, "page", 1)
 	pageSize := chatQueryInt(c, "page_size", 50)
 
-	msgs, total, err := h.chatSvc.ListMessages(c.Request.Context(), userID, convID, page, pageSize)
+	msgs, total, err := h.convSvc.ListMessages(c.Request.Context(), userID, convID, page, pageSize)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -358,7 +368,7 @@ func (h *ChatHandler) GenerateImage(c *gin.Context) {
 		return
 	}
 
-	results, err := h.chatSvc.GenerateImage(c.Request.Context(), userID, &input)
+	results, err := h.imageSvc.GenerateImage(c.Request.Context(), userID, &input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
