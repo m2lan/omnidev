@@ -239,11 +239,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sendingConversationIds.delete(conversationId);
           const { [conversationId]: _, ...streamingStates } = state.streamingStates;
 
+          // Auto-update conversation title from first user message (matches backend generateTitle)
+          const conversations = state.conversations.map((c) => {
+            if (c.id === conversationId && (!c.title || c.title === "")) {
+              const autoTitle = content.length > 50 ? content.slice(0, 50) + "..." : content;
+              return { ...c, title: autoTitle };
+            }
+            return c;
+          });
+
           return {
             messages: state.activeConversationId === conversationId ? finalMessages : state.messages,
             messagesCache: { ...state.messagesCache, [conversationId]: finalMessages },
             sendingConversationIds,
             streamingStates,
+            conversations,
           };
         });
       },
