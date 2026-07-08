@@ -39,7 +39,9 @@ func (s *SearchService) Search(ctx context.Context, userID, kbID uuid.UUID, inpu
 		input.TopK = 10
 	}
 	if input.MinScore <= 0 {
-		input.MinScore = 0.3
+		// RRF scores are typically very small (max ~0.016 with k=60)
+		// Use a much lower threshold to avoid filtering out valid results
+		input.MinScore = 0.01
 	}
 
 	req := &domain.SearchRequest{

@@ -117,6 +117,11 @@ func (s *KnowledgeBaseService) GetKnowledgeBase(ctx context.Context, userID, kbI
 	return kb, nil
 }
 
+// ListAllKnowledgeBases returns all ready knowledge bases for a user (no pagination).
+func (s *KnowledgeBaseService) ListAllKnowledgeBases(ctx context.Context, userID uuid.UUID) ([]*domain.KnowledgeBase, error) {
+	return s.kbRepo.ListAllByUser(ctx, userID)
+}
+
 // ListKnowledgeBases returns a paginated list of knowledge bases.
 func (s *KnowledgeBaseService) ListKnowledgeBases(ctx context.Context, userID uuid.UUID, page, pageSize int) ([]*domain.KnowledgeBase, int, error) {
 	if page < 1 {

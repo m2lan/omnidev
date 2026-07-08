@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn, formatRelativeTime, truncate } from "@/lib/utils";
-import type { Conversation } from "@/lib/api/client";
+import { api, type Conversation, type KnowledgeBase } from "@/lib/api/client";
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -20,6 +21,27 @@ export function ConversationList({
   isLoading,
   sendingIds,
 }: ConversationListProps) {
+  const [kbMap, setKbMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Load KB names for display
+    const loadKBs = async () => {
+      try {
+        const { data } = await api.listKnowledgeBases({ page_size: 100 });
+        if (data) {
+          const map: Record<string, string> = {};
+          data.forEach((kb) => {
+            map[kb.id] = kb.name;
+          });
+          setKbMap(map);
+        }
+      } catch {
+        // Ignore errors - KB names are optional display info
+      }
+    };
+    loadKBs();
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-4">
@@ -99,6 +121,23 @@ export function ConversationList({
                     {tag}
                   </span>
                 ))}
+              </div>
+            )}
+            {conv.knowledge_base_ids && conv.knowledge_base_ids.length > 0 && (
+              <div className="flex gap-1 mt-1.5">
+                {conv.knowledge_base_ids.slice(0, 2).map((kbId) => (
+                  <span
+                    key={kbId}
+                    className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs"
+                  >
+                    📚 {kbMap[kbId] || "KB"}
+                  </span>
+                ))}
+                {conv.knowledge_base_ids.length > 2 && (
+                  <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs">
+                    +{conv.knowledge_base_ids.length - 2}
+                  </span>
+                )}
               </div>
             )}
           </div>

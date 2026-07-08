@@ -28,12 +28,13 @@ type ConversationRepository interface {
 
 // ConversationUpdate defines fields that can be updated.
 type ConversationUpdate struct {
-	Title        *string
-	ModelID      *uuid.UUID
-	SystemPrompt *string
-	Status       *domain.ConversationStatus
-	Pinned       *bool
-	Tags         []string
+	Title            *string
+	ModelID          *uuid.UUID
+	SystemPrompt     *string
+	Status           *domain.ConversationStatus
+	Pinned           *bool
+	Tags             []string
+	KnowledgeBaseIDs *[]uuid.UUID
 }
 
 // ConversationFilter defines filters for listing conversations.
@@ -54,19 +55,19 @@ func NewConversationRepository(pool *pgxpool.Pool) ConversationRepository {
 
 func (r *conversationRepository) Create(ctx context.Context, conv *domain.Conversation) error {
 	query := `
-		INSERT INTO conversations (id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, metadata)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO conversations (id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, knowledge_base_ids, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING created_at, updated_at, message_count`
 
 	return r.pool.QueryRow(ctx, query,
 		conv.ID, conv.UserID, conv.OrgID, conv.Title, conv.ModelID,
-		conv.SystemPrompt, conv.Settings, conv.Status, conv.Pinned, conv.Tags, conv.Metadata,
+		conv.SystemPrompt, conv.Settings, conv.Status, conv.Pinned, conv.Tags, conv.KnowledgeBaseIDs, conv.Metadata,
 	).Scan(&conv.CreatedAt, &conv.UpdatedAt, &conv.MessageCount)
 }
 
 func (r *conversationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Conversation, error) {
 	query := `
-		SELECT id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, message_count, metadata, created_at, updated_at
+		SELECT id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, knowledge_base_ids, message_count, metadata, created_at, updated_at
 		FROM conversations
 		WHERE id = $1 AND deleted_at IS NULL`
 
@@ -74,7 +75,7 @@ func (r *conversationRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&conv.ID, &conv.UserID, &conv.OrgID, &conv.Title, &conv.ModelID,
 		&conv.SystemPrompt, &conv.Settings, &conv.Status, &conv.Pinned,
-		&conv.Tags, &conv.MessageCount, &conv.Metadata, &conv.CreatedAt, &conv.UpdatedAt,
+		&conv.Tags, &conv.KnowledgeBaseIDs, &conv.MessageCount, &conv.Metadata, &conv.CreatedAt, &conv.UpdatedAt,
 	)
 
 	if err == pgx.ErrNoRows {
@@ -119,6 +120,11 @@ func (r *conversationRepository) Update(ctx context.Context, id uuid.UUID, updat
 	if update.Tags != nil {
 		setClauses = append(setClauses, fmt.Sprintf("tags = $%d", argIdx))
 		args = append(args, update.Tags)
+		argIdx++
+	}
+	if update.KnowledgeBaseIDs != nil {
+		setClauses = append(setClauses, fmt.Sprintf("knowledge_base_ids = $%d", argIdx))
+		args = append(args, *update.KnowledgeBaseIDs)
 		argIdx++
 	}
 
@@ -186,7 +192,7 @@ func (r *conversationRepository) List(ctx context.Context, userID uuid.UUID, fil
 
 	// Fetch
 	query := fmt.Sprintf(`
-		SELECT id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, message_count, metadata, created_at, updated_at
+		SELECT id, user_id, org_id, title, model_id, system_prompt, settings, status, pinned, tags, knowledge_base_ids, message_count, metadata, created_at, updated_at
 		FROM conversations
 		WHERE %s
 		ORDER BY pinned DESC, updated_at DESC
@@ -205,7 +211,7 @@ func (r *conversationRepository) List(ctx context.Context, userID uuid.UUID, fil
 		if err := rows.Scan(
 			&conv.ID, &conv.UserID, &conv.OrgID, &conv.Title, &conv.ModelID,
 			&conv.SystemPrompt, &conv.Settings, &conv.Status, &conv.Pinned,
-			&conv.Tags, &conv.MessageCount, &conv.Metadata, &conv.CreatedAt, &conv.UpdatedAt,
+			&conv.Tags, &conv.KnowledgeBaseIDs, &conv.MessageCount, &conv.Metadata, &conv.CreatedAt, &conv.UpdatedAt,
 		); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan conversation: %w", err)
 		}

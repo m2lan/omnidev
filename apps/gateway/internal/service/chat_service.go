@@ -22,6 +22,7 @@ import (
 	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/domain"
 	"github.com/omnidev/gateway/internal/repository"
+	ragservice "github.com/omnidev/gateway/internal/rag/service"
 )
 
 // ChatService handles message sending and streaming operations.
@@ -38,6 +39,8 @@ type ChatService struct {
 	cache           *cache.Redis
 	defaultModel    string
 	ragService      *RAGService
+	userRepo        repository.UserRepository
+	kbService       *ragservice.KnowledgeBaseService
 }
 
 // NewChatService creates a new chat service.
@@ -72,6 +75,10 @@ func NewChatService(
 			svc.parser = v
 		case *RAGService:
 			svc.ragService = v
+		case repository.UserRepository:
+			svc.userRepo = v
+		case *ragservice.KnowledgeBaseService:
+			svc.kbService = v
 		}
 	}
 	return svc
@@ -407,6 +414,68 @@ func (s *ChatService) ListAvailableModelsForUser(ctx context.Context, userID uui
 	return models
 }
 
+// resolveKnowledgeBaseIDs determines which knowledge bases to search based on the 3-tier priority:
+// 1. Message-level override (frontend temporary selection) — highest priority
+// 2. Conversation-level binding (set at conversation creation) — persisted in DB
+// 3. User default (configured in user settings) — lowest priority
+// Returns the resolved KB IDs, or nil if RAG is disabled.
+func (s *ChatService) resolveKnowledgeBaseIDs(
+	ctx context.Context,
+	userID uuid.UUID,
+	messageKBIDs []string,
+	conversationKBIDs []string,
+) []string {
+	// 1. Message-level override
+	if len(messageKBIDs) > 0 {
+		return messageKBIDs
+	}
+
+	// Fetch user settings if userRepo is available
+	if s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, userID)
+		if err == nil && user.Settings != nil {
+			ragMode, _ := user.Settings["rag_mode"].(string)
+
+			switch ragMode {
+			case "off":
+				return nil
+			case "all":
+				// Return sentinel for caller to resolve
+				return []string{"__all__"}
+			case "specified":
+				// Fall through to conversation/user default logic
+			default:
+				// No rag_mode set — check conversation and user defaults
+			}
+
+			// 2. Conversation-level binding
+			if len(conversationKBIDs) > 0 {
+				return conversationKBIDs
+			}
+
+			// 3. User default KB IDs
+			if defaultIDs, ok := user.Settings["default_kb_ids"].([]interface{}); ok {
+				ids := make([]string, 0, len(defaultIDs))
+				for _, id := range defaultIDs {
+					if s, ok := id.(string); ok {
+						ids = append(ids, s)
+					}
+				}
+				if len(ids) > 0 {
+					return ids
+				}
+			}
+		}
+	}
+
+	// Fallback: use conversation-level binding if available
+	if len(conversationKBIDs) > 0 {
+		return conversationKBIDs
+	}
+
+	return nil
+}
+
 // buildAdapterMessages converts domain messages to adapter messages with multimodal support.
 func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Conversation, recentMsgs []*domain.Message, input *SendMessageInput) []adapter.Message {
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+2)
@@ -414,12 +483,33 @@ func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Con
 		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 
-	// Inject RAG context if knowledge bases are referenced
-	if len(input.KnowledgeBaseIDs) > 0 && s.ragService != nil {
-		ragContext := s.retrieveRAGContext(ctx, input.Content, input.KnowledgeBaseIDs)
-		if ragContext != "" {
-			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system",
-				"The following context was retrieved from the user's knowledge bases. Use it to answer the user's question when relevant. Cite the source when using information from the knowledge base.\n\n"+ragContext))
+	// Inject RAG context — resolve KB IDs using 3-tier priority
+	if s.ragService != nil {
+		convKBStrs := make([]string, len(conv.KnowledgeBaseIDs))
+		for i, id := range conv.KnowledgeBaseIDs {
+			convKBStrs[i] = id.String()
+		}
+		resolvedIDs := s.resolveKnowledgeBaseIDs(ctx, conv.UserID, input.KnowledgeBaseIDs, convKBStrs)
+
+		// Handle "__all__" sentinel — fetch all user's knowledge bases
+		if len(resolvedIDs) == 1 && resolvedIDs[0] == "__all__" && s.kbService != nil {
+			allKBs, err := s.kbService.ListAllKnowledgeBases(ctx, conv.UserID)
+			if err == nil && len(allKBs) > 0 {
+				resolvedIDs = make([]string, len(allKBs))
+				for i, kb := range allKBs {
+					resolvedIDs[i] = kb.ID.String()
+				}
+			} else {
+				resolvedIDs = nil
+			}
+		}
+
+		if len(resolvedIDs) > 0 {
+			ragContext := s.retrieveRAGContext(ctx, input.Content, resolvedIDs)
+			if ragContext != "" {
+				adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system",
+					"The following context was retrieved from the user's knowledge bases. Use it to answer the user's question when relevant. Cite the source when using information from the knowledge base.\n\n"+ragContext))
+			}
 		}
 	}
 

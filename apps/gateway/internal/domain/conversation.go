@@ -47,21 +47,22 @@ type Model struct {
 
 // Conversation represents a chat conversation.
 type Conversation struct {
-	ID           uuid.UUID              `json:"id" db:"id"`
-	UserID       uuid.UUID              `json:"user_id" db:"user_id"`
-	OrgID        *uuid.UUID             `json:"org_id,omitempty" db:"org_id"`
-	Title        *string                `json:"title,omitempty" db:"title"`
-	ModelID      *uuid.UUID             `json:"model_id,omitempty" db:"model_id"`
-	SystemPrompt *string                `json:"system_prompt,omitempty" db:"system_prompt"`
-	Settings     map[string]interface{} `json:"settings" db:"settings"`
-	Status       ConversationStatus     `json:"status" db:"status"`
-	Pinned       bool                   `json:"pinned" db:"pinned"`
-	Tags         []string               `json:"tags" db:"tags"`
-	MessageCount int                    `json:"message_count" db:"message_count"`
-	Metadata     map[string]interface{} `json:"metadata" db:"metadata"`
-	CreatedAt    time.Time              `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at" db:"updated_at"`
-	DeletedAt    *time.Time             `json:"-" db:"deleted_at"`
+	ID               uuid.UUID              `json:"id" db:"id"`
+	UserID           uuid.UUID              `json:"user_id" db:"user_id"`
+	OrgID            *uuid.UUID             `json:"org_id,omitempty" db:"org_id"`
+	Title            *string                `json:"title,omitempty" db:"title"`
+	ModelID          *uuid.UUID             `json:"model_id,omitempty" db:"model_id"`
+	SystemPrompt     *string                `json:"system_prompt,omitempty" db:"system_prompt"`
+	Settings         map[string]interface{} `json:"settings" db:"settings"`
+	Status           ConversationStatus     `json:"status" db:"status"`
+	Pinned           bool                   `json:"pinned" db:"pinned"`
+	Tags             []string               `json:"tags" db:"tags"`
+	KnowledgeBaseIDs []uuid.UUID            `json:"knowledge_base_ids" db:"knowledge_base_ids"`
+	MessageCount     int                    `json:"message_count" db:"message_count"`
+	Metadata         map[string]interface{} `json:"metadata" db:"metadata"`
+	CreatedAt        time.Time              `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at" db:"updated_at"`
+	DeletedAt        *time.Time             `json:"-" db:"deleted_at"`
 }
 
 // Message represents a chat message.

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
-import { api, UserAIConfig, CreateAIConfigInput, UpdateAIConfigInput, TestConnectionResult } from "@/lib/api/client";
+import { api, UserAIConfig, CreateAIConfigInput, UpdateAIConfigInput, TestConnectionResult, UserSettings, KnowledgeBase } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,10 +38,20 @@ export default function SettingsPage() {
   const [showConfigForm, setShowConfigForm] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
-  // Fetch API keys and AI configs on mount
+  // RAG settings
+  const [ragMode, setRagMode] = useState<"off" | "all" | "specified">("all");
+  const [defaultKBIds, setDefaultKBIds] = useState<string[]>([]);
+  const [availableKBs, setAvailableKBs] = useState<KnowledgeBase[]>([]);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSavingRAG, setIsSavingRAG] = useState(false);
+  const [ragSaved, setRagSaved] = useState(false);
+
+  // Fetch API keys, AI configs, and RAG settings on mount
   useEffect(() => {
     loadAPIKeys();
     loadAIConfigs();
+    loadRAGSettings();
+    loadAvailableKBs();
   }, []);
 
   // Update local state when user changes
@@ -73,6 +83,53 @@ export default function SettingsPage() {
     } finally {
       setIsLoadingConfigs(false);
     }
+  };
+
+  const loadRAGSettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+      const { data } = await api.getSettings();
+      if (data) {
+        setRagMode((data.rag_mode as "off" | "all" | "specified") || "all");
+        setDefaultKBIds((data.default_kb_ids as string[]) || []);
+      }
+    } catch (error) {
+      console.error("Failed to load RAG settings:", error);
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  const loadAvailableKBs = async () => {
+    try {
+      const { data } = await api.listKnowledgeBases({ page_size: 100 });
+      setAvailableKBs(data || []);
+    } catch (error) {
+      console.error("Failed to load knowledge bases:", error);
+    }
+  };
+
+  const handleSaveRAGSettings = async () => {
+    setIsSavingRAG(true);
+    setRagSaved(false);
+    try {
+      await api.updateSettings({
+        rag_mode: ragMode,
+        default_kb_ids: ragMode === "specified" ? defaultKBIds : [],
+      });
+      setRagSaved(true);
+      setTimeout(() => setRagSaved(false), 2000);
+    } catch (error) {
+      console.error("Failed to save RAG settings:", error);
+    } finally {
+      setIsSavingRAG(false);
+    }
+  };
+
+  const toggleDefaultKB = (kbId: string) => {
+    setDefaultKBIds((prev) =>
+      prev.includes(kbId) ? prev.filter((id) => id !== kbId) : [...prev, kbId]
+    );
   };
 
   const handleCreateAIConfig = async (input: CreateAIConfigInput) => {
@@ -305,6 +362,104 @@ export default function SettingsPage() {
                 />
               ))}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* RAG Knowledge Settings */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>📚 RAG Knowledge Settings</CardTitle>
+          <CardDescription>Configure how knowledge bases are used in conversations</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoadingSettings ? (
+            <p className="text-sm text-muted-foreground">Loading settings...</p>
+          ) : (
+            <>
+              <div className="space-y-3">
+                <Label>RAG Mode</Label>
+                <div className="space-y-2">
+                  {[
+                    { value: "off", label: "Off", desc: "Don't search knowledge bases" },
+                    { value: "all", label: "All (Recommended)", desc: "Automatically search all your knowledge bases" },
+                    { value: "specified", label: "Specified", desc: "Only use selected knowledge bases below" },
+                  ].map((option) => (
+                    <div
+                      key={option.value}
+                      className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                        ragMode === option.value ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                      }`}
+                      onClick={() => setRagMode(option.value as "off" | "all" | "specified")}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          ragMode === option.value ? "border-primary" : "border-muted-foreground"
+                        }`}
+                      >
+                        {ragMode === option.value && (
+                          <div className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{option.label}</p>
+                        <p className="text-xs text-muted-foreground">{option.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {ragMode === "specified" && (
+                <div className="space-y-3">
+                  <Label>Default Knowledge Bases</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Select which knowledge bases to use by default in new conversations
+                  </p>
+                  {availableKBs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No knowledge bases available. Create one first.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {availableKBs.map((kb) => (
+                        <div
+                          key={kb.id}
+                          className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                            defaultKBIds.includes(kb.id) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+                          }`}
+                          onClick={() => toggleDefaultKB(kb.id)}
+                        >
+                          <div
+                            className={`w-4 h-4 rounded border flex items-center justify-center ${
+                              defaultKBIds.includes(kb.id)
+                                ? "bg-primary border-primary"
+                                : "border-muted-foreground"
+                            }`}
+                          >
+                            {defaultKBIds.includes(kb.id) && (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{kb.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {kb.doc_count} docs · {kb.chunk_count} chunks
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSaveRAGSettings} disabled={isSavingRAG}>
+                  {isSavingRAG ? "Saving..." : ragSaved ? "Saved!" : "Save RAG Settings"}
+                </Button>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -182,6 +182,15 @@ class ApiClient {
     return this.patch<ApiResponse<User>>("/api/v1/users/me", data);
   }
 
+  // User Settings
+  async getSettings() {
+    return this.get<ApiResponse<UserSettings>>("/api/v1/users/me/settings");
+  }
+
+  async updateSettings(data: UpdateUserSettingsInput) {
+    return this.patch<ApiResponse<UserSettings>>("/api/v1/users/me/settings", data);
+  }
+
   // API Keys
   async listAPIKeys() {
     return this.get<ApiResponse<APIKey[]>>("/api/v1/users/me/api-keys");
@@ -559,6 +568,7 @@ export interface Conversation {
   status: string;
   pinned: boolean;
   tags: string[];
+  knowledge_base_ids: string[];
   message_count: number;
   created_at: string;
   updated_at: string;
@@ -679,6 +689,18 @@ export interface CreateConversationInput {
   model_id?: string;
   system_prompt?: string;
   tags?: string[];
+  knowledge_base_ids?: string[];
+}
+
+export interface UserSettings {
+  rag_mode?: "off" | "all" | "specified";
+  default_kb_ids?: string[];
+  [key: string]: unknown;
+}
+
+export interface UpdateUserSettingsInput {
+  rag_mode?: "off" | "all" | "specified";
+  default_kb_ids?: string[];
 }
 
 export interface CreateKBInput {

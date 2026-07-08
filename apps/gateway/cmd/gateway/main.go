@@ -200,26 +200,6 @@ func main() {
 	// Initialize services
 	adapterResolver := service.NewAdapterResolver(userAIConfigRepo, adapterFactory, adapterRegistry)
 	ragService := service.NewRAGService(fmt.Sprintf("http://localhost:%d", cfg.App.Port))
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, ragService)
-	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
-	imageService := service.NewImageService(adapterResolver, attRepository, convRepository, msgRepository, minioClient)
-	userAIConfigService := service.NewUserAIConfigService(userAIConfigRepo, encryptor)
-
-	// Initialize upload service (if MinIO is available)
-	var uploadService *service.UploadService
-	if minioClient != nil {
-		uploadService = service.NewUploadService(attRepository, minioClient)
-	}
-
-	// Initialize handlers
-	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
-	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
-	chatHandler := handler.NewChatHandler(convService, chatService, imageService)
-	userAIConfigHandler := handler.NewUserAIConfigProxyHandler(userAIConfigService)
-	var uploadHandler *handler.UploadHandler
-	if uploadService != nil {
-		uploadHandler = handler.NewUploadHandler(uploadService)
-	}
 
 	// RAG (embedded) — Knowledge Base + Document + Search
 	ragDocParser := ragparser.NewDocParser()
@@ -242,6 +222,27 @@ func main() {
 	ragKBSvc := ragservice.NewKnowledgeBaseService(ragKBRepo, ragDocRepo, ragChunkRepo, minioClient, ragDocParser, ragChunker, ragEmb)
 	ragSearchSvc := ragservice.NewSearchService(ragRetriever, ragChunkRepo)
 	ragKBHandler := raghandler.NewKnowledgeBaseHandler(ragKBSvc)
+
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, ragService, userRepository, ragKBSvc)
+	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
+	imageService := service.NewImageService(adapterResolver, attRepository, convRepository, msgRepository, minioClient)
+	userAIConfigService := service.NewUserAIConfigService(userAIConfigRepo, encryptor)
+
+	// Initialize upload service (if MinIO is available)
+	var uploadService *service.UploadService
+	if minioClient != nil {
+		uploadService = service.NewUploadService(attRepository, minioClient)
+	}
+
+	// Initialize handlers
+	healthHandler := handler.NewHealthHandler(version, commit, buildTime)
+	authHandler := handler.NewAuthHandler(userRepository, oauthRepository, apiKeyRepository, jwtManager, redisClient, cfg)
+	chatHandler := handler.NewChatHandler(convService, chatService, imageService)
+	userAIConfigHandler := handler.NewUserAIConfigProxyHandler(userAIConfigService)
+	var uploadHandler *handler.UploadHandler
+	if uploadService != nil {
+		uploadHandler = handler.NewUploadHandler(uploadService)
+	}
 	ragSearchHandler := raghandler.NewSearchHandler(ragSearchSvc)
 
 	// Setup Gin

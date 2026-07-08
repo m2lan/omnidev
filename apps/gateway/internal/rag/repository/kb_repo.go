@@ -21,6 +21,7 @@ type KnowledgeBaseRepository interface {
 	Update(ctx context.Context, id uuid.UUID, update *KBUpdate) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, userID uuid.UUID, offset, limit int) ([]*domain.KnowledgeBase, int, error)
+	ListAllByUser(ctx context.Context, userID uuid.UUID) ([]*domain.KnowledgeBase, error)
 	UpdateStats(ctx context.Context, id uuid.UUID, docCount, chunkCount int, totalTokens int64) error
 }
 
@@ -164,6 +165,37 @@ func (r *kbRepository) List(ctx context.Context, userID uuid.UUID, offset, limit
 	}
 
 	return kbs, total, nil
+}
+
+// ListAllByUser returns all active knowledge bases for a user (no pagination).
+func (r *kbRepository) ListAllByUser(ctx context.Context, userID uuid.UUID) ([]*domain.KnowledgeBase, error) {
+	query := `
+		SELECT id, user_id, org_id, name, description, embedding_model, chunk_size, chunk_overlap,
+		       doc_count, chunk_count, total_tokens, total_size, settings, status, created_at, updated_at
+		FROM knowledge_bases WHERE user_id = $1 AND deleted_at IS NULL AND status IN ('active', 'ready')
+		ORDER BY created_at DESC`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list knowledge bases: %w", err)
+	}
+	defer rows.Close()
+
+	kbs := make([]*domain.KnowledgeBase, 0)
+	for rows.Next() {
+		kb := &domain.KnowledgeBase{}
+		if err := rows.Scan(
+			&kb.ID, &kb.UserID, &kb.OrgID, &kb.Name, &kb.Description,
+			&kb.EmbeddingModel, &kb.ChunkSize, &kb.ChunkOverlap,
+			&kb.DocCount, &kb.ChunkCount, &kb.TotalTokens, &kb.TotalSize,
+			&kb.Settings, &kb.Status, &kb.CreatedAt, &kb.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan knowledge base: %w", err)
+		}
+		kbs = append(kbs, kb)
+	}
+
+	return kbs, nil
 }
 
 func (r *kbRepository) UpdateStats(ctx context.Context, id uuid.UUID, docCount, chunkCount int, totalTokens int64) error {

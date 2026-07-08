@@ -418,3 +418,98 @@ type UserResponse struct {
 	Settings  map[string]interface{} `json:"settings,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
+
+// GetSettings returns the current user's settings.
+// GET /api/v1/users/me/settings
+func (h *AuthHandler) GetSettings(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": 401, "message": "unauthorized"},
+		})
+		return
+	}
+
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	settings := user.Settings
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": settings})
+}
+
+// UpdateSettingsInput defines the input for updating user settings.
+type UpdateSettingsInput struct {
+	RAGMode       *string   `json:"rag_mode,omitempty"`
+	DefaultKBIDs  []string  `json:"default_kb_ids,omitempty"`
+}
+
+// UpdateSettings partially updates the current user's settings.
+// PATCH /api/v1/users/me/settings
+func (h *AuthHandler) UpdateSettings(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"code": 401, "message": "unauthorized"},
+		})
+		return
+	}
+
+	var input UpdateSettingsInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{"code": 400, "message": "invalid request body", "detail": err.Error()},
+		})
+		return
+	}
+
+	// Get current user to merge settings
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	// Merge into existing settings
+	settings := user.Settings
+	if settings == nil {
+		settings = map[string]interface{}{}
+	}
+
+	if input.RAGMode != nil {
+		// Validate RAG mode value
+		switch *input.RAGMode {
+		case "off", "all", "specified":
+			settings["rag_mode"] = *input.RAGMode
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{"code": 400, "message": "rag_mode must be one of: off, all, specified"},
+			})
+			return
+		}
+	}
+	if input.DefaultKBIDs != nil {
+		settings["default_kb_ids"] = input.DefaultKBIDs
+	}
+
+	// Persist
+	update := &domain.UserUpdate{Settings: settings}
+	if err := h.userRepo.Update(c.Request.Context(), userID, update); err != nil {
+		handleError(c, err)
+		return
+	}
+
+	// Invalidate cache
+	if h.cache != nil {
+		cacheKey := fmt.Sprintf("user:profile:%s", userID.String())
+		_ = h.cache.Delete(c.Request.Context(), cacheKey)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": settings})
+}

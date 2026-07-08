@@ -52,6 +52,8 @@ func Setup(
 			{
 				users.GET("/me", authHandler.GetProfile)
 				users.PATCH("/me", authHandler.UpdateProfile)
+				users.GET("/me/settings", authHandler.GetSettings)
+				users.PATCH("/me/settings", authHandler.UpdateSettings)
 				users.GET("/me/api-keys", authHandler.ListAPIKeys)
 				users.POST("/me/api-keys", authHandler.CreateAPIKey)
 				users.DELETE("/me/api-keys/:id", authHandler.RevokeAPIKey)

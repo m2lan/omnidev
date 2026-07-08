@@ -103,9 +103,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   createConversation: async (title?: string) => {
     set({ error: null });
     try {
+      const { selectedKBs, selectedModel } = get();
       const { data } = await api.createConversation({
         title,
-        model_id: get().selectedModel || undefined,
+        model_id: selectedModel || undefined,
+        knowledge_base_ids: selectedKBs.length > 0 ? selectedKBs.map((kb) => kb.id) : undefined,
       });
       set((state) => ({
         conversations: [data, ...state.conversations],
@@ -120,13 +122,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setActiveConversation: async (id: string) => {
-    const { activeConversationId, messages } = get();
+    const { activeConversationId, messages, conversations } = get();
 
     // Save current messages to cache before switching
     if (activeConversationId) {
       set((state) => ({
         messagesCache: { ...state.messagesCache, [activeConversationId]: messages },
       }));
+    }
+
+    // Load conversation's knowledge_base_ids into selectedKBs
+    const conv = conversations.find((c) => c.id === id);
+    if (conv?.knowledge_base_ids && conv.knowledge_base_ids.length > 0) {
+      // We need to load KB details for the IDs
+      try {
+        const { data: allKBs } = await api.listKnowledgeBases({ page_size: 100 });
+        const matchedKBs = (allKBs || []).filter((kb) => conv.knowledge_base_ids.includes(kb.id));
+        set({ selectedKBs: matchedKBs });
+      } catch {
+        // If KB loading fails, just clear selectedKBs
+        set({ selectedKBs: [] });
+      }
+    } else {
+      set({ selectedKBs: [] });
     }
 
     set({
@@ -157,6 +175,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   deleteConversation: async (id: string) => {
     try {
       await api.deleteConversation(id);
+      const wasActive = get().activeConversationId === id;
       set((state) => {
         const conversations = state.conversations.filter((c) => c.id !== id);
         const activeConversationId =
@@ -169,6 +188,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
         sendingConversationIds.delete(id);
         return { conversations, activeConversationId, messagesCache, streamingStates, sendingConversationIds };
       });
+
+      // If the deleted conversation was active, load the new active conversation's messages
+      if (wasActive) {
+        const { activeConversationId, messagesCache: cache } = get();
+        if (activeConversationId) {
+          const cached = cache[activeConversationId];
+          if (cached) {
+            set({ messages: cached, _loadingComplete: Date.now() });
+          } else {
+            set({ messages: [], isLoading: true });
+            try {
+              const { data } = await api.listMessages(activeConversationId, { page_size: 50 });
+              set({ messages: data || [], isLoading: false, _loadingComplete: Date.now() });
+            } catch {
+              set({ isLoading: false });
+            }
+          }
+        } else {
+          set({ messages: [] });
+        }
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Failed to delete conversation" });
     }

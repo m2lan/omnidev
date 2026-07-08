@@ -124,23 +124,37 @@ func (r *HybridRetriever) vectorSearch(ctx context.Context, kbID uuid.UUID, quer
 
 // bm25Search performs full-text search using PostgreSQL tsvector.
 func (r *HybridRetriever) bm25Search(ctx context.Context, kbID uuid.UUID, query string, topK int) ([]domain.SearchResult, error) {
-	// Use plainto_tsquery for simple keyword search
-	tsQuery := query
+	// Determine the text search configuration to use
+	// First try 'chinese' if zhparser is available, otherwise use 'simple'
+	tsConfig := "simple"
 
-	sql := `
+	// Check if zhparser extension is available
+	var hasZhparser bool
+	err := r.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'zhparser')").Scan(&hasZhparser)
+	if err == nil && hasZhparser {
+		tsConfig = "chinese"
+	}
+
+	// Use plainto_tsquery with the determined config
+	sql := fmt.Sprintf(`
 		SELECT dc.id, dc.document_id, dc.knowledge_base_id, dc.chunk_index,
 		       dc.content, dc.content_length, dc.token_count,
 		       dc.start_page, dc.end_page, dc.heading, dc.metadata,
-		       ts_rank(dc.content_tsv, plainto_tsquery('english', $1)) AS score
+		       ts_rank(dc.content_tsv, plainto_tsquery('%s', $1)) AS score
 		FROM document_chunks dc
 		WHERE dc.knowledge_base_id = $2
-		  AND dc.content_tsv @@ plainto_tsquery('english', $1)
+		  AND dc.content_tsv @@ plainto_tsquery('%s', $1)
 		ORDER BY score DESC
-		LIMIT $3`
+		LIMIT $3`, tsConfig, tsConfig)
 
-	rows, err := r.pool.Query(ctx, sql, tsQuery, kbID, topK)
+	rows, err := r.pool.Query(ctx, sql, query, kbID, topK)
 	if err != nil {
 		// Fallback to LIKE search if tsvector not available
+		logger.Log.Warn("BM25 search failed, falling back to LIKE search",
+			zap.Error(err),
+			zap.String("config", tsConfig),
+		)
 		return r.likeSearch(ctx, kbID, query, topK)
 	}
 	defer rows.Close()

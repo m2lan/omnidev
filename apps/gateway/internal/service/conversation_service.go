@@ -33,22 +33,35 @@ func NewConversationService(
 
 // CreateConversationInput defines the input for creating a conversation.
 type CreateConversationInput struct {
-	Title        string                 `json:"title"`
-	ModelID      string                 `json:"model_id"`
-	SystemPrompt string                 `json:"system_prompt"`
-	Tags         []string               `json:"tags"`
-	Settings     map[string]interface{} `json:"settings"`
+	Title            string                 `json:"title"`
+	ModelID          string                 `json:"model_id"`
+	SystemPrompt     string                 `json:"system_prompt"`
+	Tags             []string               `json:"tags"`
+	Settings         map[string]interface{} `json:"settings"`
+	KnowledgeBaseIDs []string               `json:"knowledge_base_ids"`
+}
+
+// parseUUIDs converts string slice to uuid.UUID slice, skipping invalid entries.
+func parseUUIDs(strs []string) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(strs))
+	for _, s := range strs {
+		if u, err := uuid.Parse(s); err == nil {
+			ids = append(ids, u)
+		}
+	}
+	return ids
 }
 
 // CreateConversation creates a new conversation.
 func (s *ConversationService) CreateConversation(ctx context.Context, userID uuid.UUID, input *CreateConversationInput) (*domain.Conversation, error) {
 	conv := &domain.Conversation{
-		ID:       uuid.New(),
-		UserID:   userID,
-		Status:   domain.ConversationStatusActive,
-		Tags:     input.Tags,
-		Settings: input.Settings,
-		Metadata: map[string]interface{}{},
+		ID:               uuid.New(),
+		UserID:           userID,
+		Status:           domain.ConversationStatusActive,
+		Tags:             input.Tags,
+		Settings:         input.Settings,
+		KnowledgeBaseIDs: parseUUIDs(input.KnowledgeBaseIDs),
+		Metadata:         map[string]interface{}{},
 	}
 
 	if input.Title != "" {
@@ -62,6 +75,9 @@ func (s *ConversationService) CreateConversation(ctx context.Context, userID uui
 	}
 	if input.Tags == nil {
 		conv.Tags = []string{}
+	}
+	if input.KnowledgeBaseIDs == nil {
+		conv.KnowledgeBaseIDs = []uuid.UUID{}
 	}
 
 	if err := s.convRepo.Create(ctx, conv); err != nil {
@@ -118,10 +134,11 @@ func (s *ConversationService) ListConversations(ctx context.Context, userID uuid
 
 // UpdateConversationInput defines fields for updating a conversation.
 type UpdateConversationInput struct {
-	Title        *string `json:"title"`
-	SystemPrompt *string `json:"system_prompt"`
-	Status       *string `json:"status"`
-	Pinned       *bool   `json:"pinned"`
+	Title            *string  `json:"title"`
+	SystemPrompt     *string  `json:"system_prompt"`
+	Status           *string  `json:"status"`
+	Pinned           *bool    `json:"pinned"`
+	KnowledgeBaseIDs *[]string `json:"knowledge_base_ids"`
 }
 
 // UpdateConversation updates a conversation with ownership verification.
@@ -135,9 +152,13 @@ func (s *ConversationService) UpdateConversation(ctx context.Context, userID, co
 	}
 
 	update := &repository.ConversationUpdate{
-		Title:        input.Title,
-		SystemPrompt: input.SystemPrompt,
-		Pinned:       input.Pinned,
+		Title:            input.Title,
+		SystemPrompt:     input.SystemPrompt,
+		Pinned:           input.Pinned,
+	}
+	if input.KnowledgeBaseIDs != nil {
+		parsed := parseUUIDs(*input.KnowledgeBaseIDs)
+		update.KnowledgeBaseIDs = &parsed
 	}
 	if input.Status != nil {
 		status := domain.ConversationStatus(*input.Status)
