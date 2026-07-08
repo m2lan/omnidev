@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api, type Conversation, type Message, type Attachment, type GenerateImageParams } from "@/lib/api/client";
+import { api, type Conversation, type Message, type Attachment, type KnowledgeBase, type GenerateImageParams } from "@/lib/api/client";
 
 interface StreamingState {
   content: string;
@@ -29,6 +29,9 @@ interface ChatState {
   // Image generation state
   imageGeneration: ImageGenerationState;
 
+  // Selected knowledge bases for RAG
+  selectedKBs: KnowledgeBase[];
+
   // Scroll trigger (timestamp to force scroll to bottom)
   _scrollToBottom?: number;
 
@@ -43,6 +46,9 @@ interface ChatState {
   sendMessage: (content: string, attachmentIds?: string[], attachments?: Attachment[], knowledgeBaseIds?: string[]) => Promise<void>;
   generateImage: (params: GenerateImageParams) => Promise<void>;
   setSelectedModel: (model: string) => void;
+  setSelectedKBs: (kbs: KnowledgeBase[]) => void;
+  toggleKB: (kb: KnowledgeBase) => void;
+  removeKB: (kbId: string) => void;
   clearError: () => void;
   resetSending: () => void;
 }
@@ -62,6 +68,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     prompt: "",
     progress: "idle",
   },
+  selectedKBs: [],
 
   // Computed: is the active conversation sending?
   get isActiveSending() {
@@ -386,6 +393,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSelectedModel: (model: string) => {
     set({ selectedModel: model });
+  },
+
+  setSelectedKBs: (kbs: KnowledgeBase[]) => {
+    set({ selectedKBs: kbs });
+  },
+
+  toggleKB: (kb: KnowledgeBase) => {
+    set((state) => {
+      const exists = state.selectedKBs.some((k) => k.id === kb.id);
+      return {
+        selectedKBs: exists
+          ? state.selectedKBs.filter((k) => k.id !== kb.id)
+          : [...state.selectedKBs, kb],
+      };
+    });
+  },
+
+  removeKB: (kbId: string) => {
+    set((state) => ({
+      selectedKBs: state.selectedKBs.filter((k) => k.id !== kbId),
+    }));
   },
 
   clearError: () => {

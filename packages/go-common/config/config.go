@@ -121,14 +121,17 @@ type OAuthProvider struct {
 
 // AIConfig holds AI provider settings.
 type AIConfig struct {
-	DefaultModel   string             `mapstructure:"default_model"`
-	EmbeddingModel string             `mapstructure:"embedding_model"`
-	OpenAI         AIProviderConfig   `mapstructure:"openai"`
-	Anthropic      AIProviderConfig   `mapstructure:"anthropic"`
-	Google         AIProviderConfig   `mapstructure:"google"`
-	DeepSeek       AIProviderConfig   `mapstructure:"deepseek"`
-	Qwen           AIProviderConfig   `mapstructure:"qwen"`
-	Ollama         AIProviderConfig   `mapstructure:"ollama"`
+	DefaultModel      string             `mapstructure:"default_model"`
+	EmbeddingProvider string             `mapstructure:"embedding_provider"` // openai, gemini, voyage, cohere, ollama, etc.
+	EmbeddingModel    string             `mapstructure:"embedding_model"`
+	EmbeddingAPIKey   string             `mapstructure:"embedding_api_key"`  // override per-embedding provider key
+	EmbeddingBaseURL  string             `mapstructure:"embedding_base_url"` // for self-hosted / Ollama / vLLM
+	OpenAI            AIProviderConfig   `mapstructure:"openai"`
+	Anthropic         AIProviderConfig   `mapstructure:"anthropic"`
+	Google            AIProviderConfig   `mapstructure:"google"`
+	DeepSeek          AIProviderConfig   `mapstructure:"deepseek"`
+	Qwen              AIProviderConfig   `mapstructure:"qwen"`
+	Ollama            AIProviderConfig   `mapstructure:"ollama"`
 }
 
 // AIProviderConfig holds settings for a single AI provider.

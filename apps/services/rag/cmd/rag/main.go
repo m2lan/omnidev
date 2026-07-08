@@ -37,6 +37,38 @@ var (
 	buildTime = "unknown"
 )
 
+// resolveEmbedderConfig builds an embedder.EmbedderConfig from application config.
+// It resolves the API key with fallback: embedding_api_key → provider-specific key.
+func resolveEmbedderConfig(ai config.AIConfig) embedder.EmbedderConfig {
+	apiKey := ai.EmbeddingAPIKey
+	if apiKey == "" {
+		// Fall back to provider-specific key
+		switch ai.EmbeddingProvider {
+		case "gemini":
+			apiKey = ai.Google.APIKey
+		case "openai":
+			apiKey = ai.OpenAI.APIKey
+		case "ollama":
+			apiKey = ai.Ollama.APIKey
+		}
+	}
+	baseURL := ai.EmbeddingBaseURL
+	if baseURL == "" {
+		switch ai.EmbeddingProvider {
+		case "ollama":
+			baseURL = ai.Ollama.BaseURL
+		case "openai":
+			baseURL = ai.OpenAI.BaseURL
+		}
+	}
+	return embedder.EmbedderConfig{
+		Provider: ai.EmbeddingProvider,
+		Model:    ai.EmbeddingModel,
+		APIKey:   apiKey,
+		BaseURL:  baseURL,
+	}
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -92,16 +124,15 @@ func main() {
 	docParser := parser.NewDocParser()
 	chunker := chunker.NewSemanticChunker(512, 50)
 
-	// Select embedding provider based on config
-	var emb embedder.Embedder
-	switch cfg.AI.EmbeddingModel {
-	case "gemini-embedding-2":
-		emb = embedder.NewGeminiEmbedder(cfg.AI.Google)
-		logger.Log.Info("Using Gemini embedding", zap.String("model", cfg.AI.EmbeddingModel))
-	default:
-		emb = embedder.NewOpenAIEmbedder(cfg.AI.OpenAI)
-		logger.Log.Info("Using OpenAI embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	// Create embedding provider from config
+	emb, err := embedder.New(resolveEmbedderConfig(cfg.AI))
+	if err != nil {
+		logger.Log.Fatal("Failed to create embedder", zap.Error(err))
 	}
+	logger.Log.Info("Embedding provider ready",
+		zap.String("provider", cfg.AI.EmbeddingProvider),
+		zap.String("model", cfg.AI.EmbeddingModel),
+	)
 
 	retriever := retriever.NewHybridRetriever(db.Pool, emb)
 

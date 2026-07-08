@@ -23,6 +23,10 @@ interface ChatAreaProps {
   onModelChange: (model: string) => void;
   onClearError: () => void;
   hasConversation: boolean;
+  // Knowledge base props
+  selectedKBs: KnowledgeBase[];
+  onToggleKB: (kb: KnowledgeBase) => void;
+  onRemoveKB: (kbId: string) => void;
   // Image generation props
   imageGeneration?: {
     isGenerating: boolean;
@@ -49,6 +53,9 @@ export function ChatArea({
   onModelChange,
   onClearError,
   hasConversation,
+  selectedKBs,
+  onToggleKB,
+  onRemoveKB,
   imageGeneration,
   onGenerateImage,
   scrollToBottomTrigger,
@@ -58,7 +65,6 @@ export function ChatArea({
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isImageMode, setIsImageMode] = useState(false);
-  const [selectedKBs, setSelectedKBs] = useState<KnowledgeBase[]>([]);
   const [showKBSelector, setShowKBSelector] = useState(false);
   const [availableKBs, setAvailableKBs] = useState<KnowledgeBase[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -154,24 +160,12 @@ export function ChatArea({
     }
   }, []);
 
-  const toggleKBSelector = useCallback(() => {
+  const onToggleKBSelector = useCallback(() => {
     if (!showKBSelector && availableKBs.length === 0) {
       loadKBs();
     }
     setShowKBSelector((prev) => !prev);
   }, [showKBSelector, availableKBs.length, loadKBs]);
-
-  const toggleKB = useCallback((kb: KnowledgeBase) => {
-    setSelectedKBs((prev) => {
-      const exists = prev.some((k) => k.id === kb.id);
-      if (exists) return prev.filter((k) => k.id !== kb.id);
-      return [...prev, kb];
-    });
-  }, []);
-
-  const removeKB = useCallback((kbId: string) => {
-    setSelectedKBs((prev) => prev.filter((k) => k.id !== kbId));
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,7 +281,7 @@ export function ChatArea({
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={toggleKBSelector}
+                    onClick={onToggleKBSelector}
                     className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
                       selectedKBs.length > 0
                         ? "bg-blue-100 text-blue-700"
@@ -311,7 +305,7 @@ export function ChatArea({
                             <button
                               key={kb.id}
                               type="button"
-                              onClick={() => toggleKB(kb)}
+                              onClick={() => onToggleKB(kb)}
                               className={`w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center gap-2 ${
                                 isSelected ? "bg-blue-50" : ""
                               }`}
@@ -525,7 +519,7 @@ export function ChatArea({
               <div className="relative">
                 <button
                   type="button"
-                  onClick={toggleKBSelector}
+                  onClick={onToggleKBSelector}
                   className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
                     selectedKBs.length > 0
                       ? "bg-blue-100 text-blue-700"
@@ -549,7 +543,7 @@ export function ChatArea({
                           <button
                             key={kb.id}
                             type="button"
-                            onClick={() => toggleKB(kb)}
+                            onClick={() => onToggleKB(kb)}
                             className={`w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center gap-2 ${
                               isSelected ? "bg-blue-50" : ""
                             }`}
@@ -582,7 +576,7 @@ export function ChatArea({
                   📚 {kb.name}
                   <button
                     type="button"
-                    onClick={() => removeKB(kb.id)}
+                    onClick={() => onRemoveKB(kb.id)}
                     className="ml-0.5 hover:text-blue-900"
                   >
                     ✕

@@ -46,6 +46,37 @@ var (
 	buildTime = "unknown"
 )
 
+// resolveEmbedderConfig builds an embedder.EmbedderConfig from application config.
+// It resolves the API key with fallback: embedding_api_key → provider-specific key.
+func resolveEmbedderConfig(ai config.AIConfig) ragembedder.EmbedderConfig {
+	apiKey := ai.EmbeddingAPIKey
+	if apiKey == "" {
+		switch ai.EmbeddingProvider {
+		case "gemini":
+			apiKey = ai.Google.APIKey
+		case "openai":
+			apiKey = ai.OpenAI.APIKey
+		case "ollama":
+			apiKey = ai.Ollama.APIKey
+		}
+	}
+	baseURL := ai.EmbeddingBaseURL
+	if baseURL == "" {
+		switch ai.EmbeddingProvider {
+		case "ollama":
+			baseURL = ai.Ollama.BaseURL
+		case "openai":
+			baseURL = ai.OpenAI.BaseURL
+		}
+	}
+	return ragembedder.EmbedderConfig{
+		Provider: ai.EmbeddingProvider,
+		Model:    ai.EmbeddingModel,
+		APIKey:   apiKey,
+		BaseURL:  baseURL,
+	}
+}
+
 func main() {
 	// Load configuration
 	cfg, err := config.Load()
@@ -168,7 +199,8 @@ func main() {
 
 	// Initialize services
 	adapterResolver := service.NewAdapterResolver(userAIConfigRepo, adapterFactory, adapterRegistry)
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser)
+	ragService := service.NewRAGService(fmt.Sprintf("http://localhost:%d", cfg.App.Port))
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, ragService)
 	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
 	imageService := service.NewImageService(adapterResolver, attRepository, convRepository, msgRepository, minioClient)
 	userAIConfigService := service.NewUserAIConfigService(userAIConfigRepo, encryptor)
@@ -193,16 +225,15 @@ func main() {
 	ragDocParser := ragparser.NewDocParser()
 	ragChunker := ragchunker.NewSemanticChunker(512, 50)
 
-	// Select embedding provider based on config
-	var ragEmb ragembedder.Embedder
-	switch cfg.AI.EmbeddingModel {
-	case "gemini-embedding-2":
-		ragEmb = ragembedder.NewGeminiEmbedder(cfg.AI.Google)
-		logger.Log.Info("Using Gemini embedding", zap.String("model", cfg.AI.EmbeddingModel))
-	default:
-		ragEmb = ragembedder.NewOpenAIEmbedder(cfg.AI.OpenAI, cfg.AI.EmbeddingModel)
-		logger.Log.Info("Using OpenAI embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	// Create embedding provider from config
+	ragEmb, err := ragembedder.New(resolveEmbedderConfig(cfg.AI))
+	if err != nil {
+		logger.Log.Fatal("Failed to create embedder", zap.Error(err))
 	}
+	logger.Log.Info("Embedding provider ready",
+		zap.String("provider", cfg.AI.EmbeddingProvider),
+		zap.String("model", cfg.AI.EmbeddingModel),
+	)
 
 	ragRetriever := ragretriever.NewHybridRetriever(db.Pool, ragEmb)
 	ragKBRepo := ragrepo.NewKnowledgeBaseRepository(db.Pool)

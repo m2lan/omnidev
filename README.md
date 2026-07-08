@@ -174,6 +174,41 @@ Key variables:
 - `JWT_SECRET` — JWT signing secret
 - `OPENAI_API_KEY` — OpenAI API key (or other provider)
 
+#### RAG Embedding Configuration
+
+Configure the embedding provider for RAG knowledge base. Provider-based selection instead of model name guessing:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RAG_EMBEDDING_PROVIDER` | Provider name: `openai` / `gemini` / `ollama` | `openai` |
+| `RAG_EMBEDDING_MODEL` | Model identifier (provider-specific) | `text-embedding-3-small` |
+| `RAG_EMBEDDING_API_KEY` | API key override (optional, falls back to provider key) | — |
+| `RAG_EMBEDDING_BASE_URL` | Base URL for self-hosted services (Ollama, vLLM, etc.) | — |
+
+Example configurations:
+
+```env
+# OpenAI (default)
+RAG_EMBEDDING_PROVIDER=openai
+RAG_EMBEDDING_MODEL=text-embedding-3-small
+
+# Gemini
+RAG_EMBEDDING_PROVIDER=gemini
+RAG_EMBEDDING_MODEL=gemini-embedding-2
+
+# Ollama (local)
+RAG_EMBEDDING_PROVIDER=ollama
+RAG_EMBEDDING_MODEL=nomic-embed-text
+RAG_EMBEDDING_BASE_URL=http://localhost:11434/v1
+
+# Self-hosted OpenAI-compatible (vLLM, text-embedding-inference, etc.)
+RAG_EMBEDDING_PROVIDER=openai
+RAG_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+RAG_EMBEDDING_BASE_URL=http://your-server:8080/v1
+```
+
+To add a new embedding provider, register a factory in `embedder/registry.go` — zero main.go changes needed.
+
 ## Competitive Landscape
 
 | Capability | Competitors | OmniDev Differentiator |

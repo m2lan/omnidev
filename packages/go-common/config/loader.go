@@ -61,7 +61,8 @@ func Load() (*Config, error) {
 	v.SetDefault("jwt.issuer", "omnidev")
 
 	v.SetDefault("ai.default_model", "deepseek-chat")
-	v.SetDefault("ai.embedding_model", "gemini-embedding-2")
+	v.SetDefault("ai.embedding_provider", "openai")
+	v.SetDefault("ai.embedding_model", "text-embedding-3-small")
 
 	v.SetDefault("sandbox.runtime_image", "omnidev/sandbox:latest")
 	v.SetDefault("sandbox.cpu_limit", "2")
@@ -155,8 +156,11 @@ func bindEnvVars(v *viper.Viper) {
 		"OPENAI_MODELS":       "ai.openai.models",
 		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
 		"GOOGLE_API_KEY":      "ai.google.api_key",
-		"AI_DEFAULT_MODEL":    "ai.default_model",
-		"RAG_EMBEDDING_MODEL": "ai.embedding_model",
+		"AI_DEFAULT_MODEL":       "ai.default_model",
+		"RAG_EMBEDDING_PROVIDER": "ai.embedding_provider",
+		"RAG_EMBEDDING_MODEL":    "ai.embedding_model",
+		"RAG_EMBEDDING_API_KEY":  "ai.embedding_api_key",
+		"RAG_EMBEDDING_BASE_URL": "ai.embedding_base_url",
 		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
 		"DEEPSEEK_MODELS":     "ai.deepseek.models",
 		"QWEN_API_KEY":        "ai.qwen.api_key",
@@ -216,8 +220,11 @@ func applyEnvFileOverrides(v *viper.Viper) {
 		"OPENAI_MODELS":       "ai.openai.models",
 		"ANTHROPIC_API_KEY":   "ai.anthropic.api_key",
 		"GOOGLE_API_KEY":      "ai.google.api_key",
-		"AI_DEFAULT_MODEL":    "ai.default_model",
-		"RAG_EMBEDDING_MODEL": "ai.embedding_model",
+		"AI_DEFAULT_MODEL":       "ai.default_model",
+		"RAG_EMBEDDING_PROVIDER": "ai.embedding_provider",
+		"RAG_EMBEDDING_MODEL":    "ai.embedding_model",
+		"RAG_EMBEDDING_API_KEY":  "ai.embedding_api_key",
+		"RAG_EMBEDDING_BASE_URL": "ai.embedding_base_url",
 		"DEEPSEEK_API_KEY":    "ai.deepseek.api_key",
 		"DEEPSEEK_MODELS":     "ai.deepseek.models",
 		"QWEN_API_KEY":        "ai.qwen.api_key",

@@ -15,18 +15,20 @@ export default function ChatPage() {
     isLoading,
     error,
     selectedModel,
+    selectedKBs,
     sendingConversationIds,
     streamingStates,
     imageGeneration,
     _scrollToBottom,
     _loadingComplete,
     fetchConversations,
-    createConversation,
     setActiveConversation,
     deleteConversation,
     sendMessage,
     generateImage,
     setSelectedModel,
+    toggleKB,
+    removeKB,
     clearError,
     resetSending,
   } = useChatStore();
@@ -47,6 +49,7 @@ export default function ChatPage() {
       activeConversationId: null,
       messages: [],
       error: null,
+      selectedKBs: [],
     });
   };
 
@@ -99,6 +102,9 @@ export default function ChatPage() {
           onModelChange={setSelectedModel}
           onClearError={clearError}
           hasConversation={!!activeConversationId}
+          selectedKBs={selectedKBs}
+          onToggleKB={toggleKB}
+          onRemoveKB={removeKB}
           imageGeneration={imageGeneration}
           onGenerateImage={handleGenerateImage}
           scrollToBottomTrigger={_scrollToBottom}

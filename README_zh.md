@@ -199,6 +199,41 @@ cp .env.example .env
 - `JWT_SECRET` — JWT 签名密钥
 - `OPENAI_API_KEY` — OpenAI API Key（或其他 AI 提供商）
 
+#### RAG 向量模型配置
+
+配置 RAG 知识库的向量模型提供商。采用 provider 级别配置，不再通过模型名猜测：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `RAG_EMBEDDING_PROVIDER` | 提供商名称：`openai` / `gemini` / `ollama` | `openai` |
+| `RAG_EMBEDDING_MODEL` | 模型标识符（各提供商不同） | `text-embedding-3-small` |
+| `RAG_EMBEDDING_API_KEY` | API Key 覆盖（可选，不填则用对应提供商的 key） | — |
+| `RAG_EMBEDDING_BASE_URL` | 自部署服务地址（Ollama、vLLM 等） | — |
+
+配置示例：
+
+```env
+# OpenAI（默认）
+RAG_EMBEDDING_PROVIDER=openai
+RAG_EMBEDDING_MODEL=text-embedding-3-small
+
+# Gemini
+RAG_EMBEDDING_PROVIDER=gemini
+RAG_EMBEDDING_MODEL=gemini-embedding-2
+
+# Ollama（本地部署）
+RAG_EMBEDDING_PROVIDER=ollama
+RAG_EMBEDDING_MODEL=nomic-embed-text
+RAG_EMBEDDING_BASE_URL=http://localhost:11434/v1
+
+# 自部署兼容 OpenAI 接口（vLLM、text-embedding-inference 等）
+RAG_EMBEDDING_PROVIDER=openai
+RAG_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+RAG_EMBEDDING_BASE_URL=http://your-server:8080/v1
+```
+
+扩展新向量模型提供商：在 `embedder/registry.go` 中注册 factory 即可，无需修改 main.go。
+
 ## 竞品对比
 
 | 能力域 | 竞品 | OmniDev 差异化 |
