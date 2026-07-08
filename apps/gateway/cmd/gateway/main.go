@@ -30,14 +30,8 @@ import (
 	"github.com/omnidev/gateway/internal/router"
 	"github.com/omnidev/gateway/internal/service"
 
-	// RAG (embedded)
-	ragchunker "github.com/omnidev/gateway/internal/rag/chunker"
-	ragembedder "github.com/omnidev/gateway/internal/rag/embedder"
-	raghandler "github.com/omnidev/gateway/internal/rag/handler"
-	ragparser "github.com/omnidev/gateway/internal/rag/parser"
-	ragrepo "github.com/omnidev/gateway/internal/rag/repository"
-	ragretriever "github.com/omnidev/gateway/internal/rag/retriever"
-	ragservice "github.com/omnidev/gateway/internal/rag/service"
+	// Knowledge Engine (SDK)
+	knowledge "github.com/omnidev/knowledge-engine"
 )
 
 var (
@@ -46,9 +40,8 @@ var (
 	buildTime = "unknown"
 )
 
-// resolveEmbedderConfig builds an embedder.EmbedderConfig from application config.
-// It resolves the API key with fallback: embedding_api_key → provider-specific key.
-func resolveEmbedderConfig(ai config.AIConfig) ragembedder.EmbedderConfig {
+// resolveEmbedderConfig builds an knowledge.EmbedderConfig from application config.
+func resolveEmbedderConfig(ai config.AIConfig) knowledge.EmbedderConfig {
 	apiKey := ai.EmbeddingAPIKey
 	if apiKey == "" {
 		switch ai.EmbeddingProvider {
@@ -69,7 +62,7 @@ func resolveEmbedderConfig(ai config.AIConfig) ragembedder.EmbedderConfig {
 			baseURL = ai.OpenAI.BaseURL
 		}
 	}
-	return ragembedder.EmbedderConfig{
+	return knowledge.EmbedderConfig{
 		Provider: ai.EmbeddingProvider,
 		Model:    ai.EmbeddingModel,
 		APIKey:   apiKey,
@@ -201,12 +194,8 @@ func main() {
 	adapterResolver := service.NewAdapterResolver(userAIConfigRepo, adapterFactory, adapterRegistry)
 	ragService := service.NewRAGService(fmt.Sprintf("http://localhost:%d", cfg.App.Port))
 
-	// RAG (embedded) — Knowledge Base + Document + Search
-	ragDocParser := ragparser.NewDocParser()
-	ragChunker := ragchunker.NewSemanticChunker(512, 50)
-
-	// Create embedding provider from config
-	ragEmb, err := ragembedder.New(resolveEmbedderConfig(cfg.AI))
+	// Knowledge Engine (SDK) — replaces embedded RAG
+	ragEmb, err := knowledge.NewEmbedder(resolveEmbedderConfig(cfg.AI))
 	if err != nil {
 		logger.Log.Fatal("Failed to create embedder", zap.Error(err))
 	}
@@ -215,13 +204,8 @@ func main() {
 		zap.String("model", cfg.AI.EmbeddingModel),
 	)
 
-	ragRetriever := ragretriever.NewHybridRetriever(db.Pool, ragEmb)
-	ragKBRepo := ragrepo.NewKnowledgeBaseRepository(db.Pool)
-	ragDocRepo := ragrepo.NewDocumentRepository(db.Pool)
-	ragChunkRepo := ragrepo.NewChunkRepository(db.Pool)
-	ragKBSvc := ragservice.NewKnowledgeBaseService(ragKBRepo, ragDocRepo, ragChunkRepo, minioClient, ragDocParser, ragChunker, ragEmb)
-	ragSearchSvc := ragservice.NewSearchService(ragRetriever, ragChunkRepo)
-	ragKBHandler := raghandler.NewKnowledgeBaseHandler(ragKBSvc)
+	knowledgeEngine := knowledge.NewFromPool(db.Pool, ragEmb, nil, nil)
+	ragKBSvc := knowledgeEngine.KnowledgeBaseService()
 
 	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, ragService, userRepository, ragKBSvc)
 	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
@@ -243,7 +227,8 @@ func main() {
 	if uploadService != nil {
 		uploadHandler = handler.NewUploadHandler(uploadService)
 	}
-	ragSearchHandler := raghandler.NewSearchHandler(ragSearchSvc)
+	ragSearchSvc := knowledgeEngine.SearchService()
+	knowledgeHandler := handler.NewKnowledgeHandler(ragKBSvc, ragSearchSvc)
 
 	// Setup Gin
 	if cfg.App.Env == "production" {
@@ -268,7 +253,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler, ragKBHandler, ragSearchHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler, knowledgeHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

@@ -10,7 +10,6 @@ import (
 	"github.com/omnidev/go-common/middleware"
 
 	"github.com/omnidev/gateway/internal/handler"
-	raghandler "github.com/omnidev/gateway/internal/rag/handler"
 )
 
 // Setup configures all routes for the API Gateway.
@@ -22,8 +21,7 @@ func Setup(
 	chatHandler *handler.ChatHandler,
 	userAIConfigHandler *handler.UserAIConfigHandler,
 	uploadHandler *handler.UploadHandler,
-	ragKBHandler *raghandler.KnowledgeBaseHandler,
-	ragSearchHandler *raghandler.SearchHandler,
+	knowledgeHandler *handler.KnowledgeHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -95,18 +93,18 @@ func Setup(
 				aiConfigs.POST("/:id/test", userAIConfigHandler.TestConnection)
 			}
 
-			// Knowledge (RAG — embedded)
+			// Knowledge (Knowledge Engine SDK)
 			knowledge := protected.Group("/knowledge")
 			{
-				knowledge.GET("", ragKBHandler.ListKnowledgeBases)
-				knowledge.POST("", ragKBHandler.CreateKnowledgeBase)
-				knowledge.GET("/:id", ragKBHandler.GetKnowledgeBase)
-				knowledge.PATCH("/:id", ragKBHandler.UpdateKnowledgeBase)
-				knowledge.DELETE("/:id", ragKBHandler.DeleteKnowledgeBase)
-				knowledge.GET("/:id/documents", ragKBHandler.ListDocuments)
-				knowledge.POST("/:id/documents", ragKBHandler.UploadDocument)
-				knowledge.DELETE("/:id/documents/:doc_id", ragKBHandler.DeleteDocument)
-				knowledge.POST("/:id/search", ragSearchHandler.Search)
+				knowledge.GET("", knowledgeHandler.ListKnowledgeBases)
+				knowledge.POST("", knowledgeHandler.CreateKnowledgeBase)
+				knowledge.GET("/:id", knowledgeHandler.GetKnowledgeBase)
+				knowledge.PATCH("/:id", knowledgeHandler.UpdateKnowledgeBase)
+				knowledge.DELETE("/:id", knowledgeHandler.DeleteKnowledgeBase)
+				knowledge.GET("/:id/documents", knowledgeHandler.ListDocuments)
+				knowledge.POST("/:id/documents", knowledgeHandler.UploadDocument)
+				knowledge.DELETE("/:id/documents/:doc_id", knowledgeHandler.DeleteDocument)
+				knowledge.POST("/:id/search", knowledgeHandler.Search)
 			}
 		}
 

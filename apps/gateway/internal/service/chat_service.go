@@ -22,7 +22,7 @@ import (
 	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/domain"
 	"github.com/omnidev/gateway/internal/repository"
-	ragservice "github.com/omnidev/gateway/internal/rag/service"
+	knowledge "github.com/omnidev/knowledge-engine"
 )
 
 // ChatService handles message sending and streaming operations.
@@ -40,7 +40,7 @@ type ChatService struct {
 	defaultModel    string
 	ragService      *RAGService
 	userRepo        repository.UserRepository
-	kbService       *ragservice.KnowledgeBaseService
+	kbService       *knowledge.KnowledgeBaseService
 }
 
 // NewChatService creates a new chat service.
@@ -77,7 +77,7 @@ func NewChatService(
 			svc.ragService = v
 		case repository.UserRepository:
 			svc.userRepo = v
-		case *ragservice.KnowledgeBaseService:
+		case *knowledge.KnowledgeBaseService:
 			svc.kbService = v
 		}
 	}

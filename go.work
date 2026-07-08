@@ -5,11 +5,11 @@ use (
 	./apps/services/user
 	./apps/services/chat
 	./apps/services/agent
-	./apps/services/rag
 	./apps/services/workflow
 	./apps/services/mcp
 	./apps/services/deploy
 	./apps/services/billing
 	./apps/services/notification
 	./packages/go-common
+	../knowledge-engine
 )
