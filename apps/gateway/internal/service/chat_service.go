@@ -277,7 +277,10 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		start := time.Now()
 
 		for chunk := range stream {
-			fullContent += chunk.Delta
+			// Only accumulate non-reasoning content for message persistence
+			if chunk.Type != "reasoning" {
+				fullContent += chunk.Delta
+			}
 			ch <- domain.ChatChunk{
 				ID:           chunk.ID,
 				Delta:        chunk.Delta,
@@ -508,7 +511,12 @@ func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Con
 			ragContext := s.retrieveRAGContext(ctx, input.Content, resolvedIDs)
 			if ragContext != "" {
 				adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system",
-					"The following context was retrieved from the user's knowledge bases. Use it to answer the user's question when relevant. Cite the source when using information from the knowledge base.\n\n"+ragContext))
+					"以下内容从用户的知识库中检索到。回答问题时请优先使用这些资料。\n\n"+
+						"输出要求（严格遵守）：\n"+
+						"- 直接给出最终答案，禁止输出思考过程、推理步骤、或\"让我查找\"之类的内心独白\n"+
+						"- 引用来源时使用文件名，如：财务部承担三大职责【财务模块需求总览.docx】\n"+
+						"- 多个来源用逗号分隔：应收应付管理【财务模块需求总览.docx, ERP需求.docx】\n"+
+						"- 只引用实际用到的资料，在每句话后就近标注，不要在末尾统一罗列\n\n"+ragContext))
 			}
 		}
 	}
@@ -618,16 +626,51 @@ func (s *ChatService) retrieveRAGContext(ctx context.Context, query string, kbID
 		return ""
 	}
 
-	// Format context
+	// Batch lookup document filenames for citation
+	docNameCache := make(map[string]string)
+	if s.kbService != nil {
+		for _, r := range allResults {
+			docID := r.Chunk.DocumentID
+			if _, ok := docNameCache[docID]; ok {
+				continue
+			}
+			docUUID, err := uuid.Parse(docID)
+			if err != nil {
+				continue
+			}
+			doc, err := s.kbService.GetDocument(ctx, docUUID)
+			if err != nil {
+				docNameCache[docID] = docID[:min(len(docID), 8)]
+				continue
+			}
+			docNameCache[docID] = doc.Filename
+		}
+	}
+
+	// Format context with rich metadata for traceable citations
 	var sb strings.Builder
-	sb.WriteString("---\n")
+	sb.WriteString("=== Knowledge Base Context ===\n\n")
 	for i, r := range allResults {
 		if i >= 10 { // Limit to top 10 results total
 			break
 		}
-		sb.WriteString(fmt.Sprintf("[Source %d | Score: %.3f]\n%s\n\n", i+1, r.Score, r.Chunk.Content))
+		sb.WriteString(fmt.Sprintf("【文献%d】", i+1))
+		if r.Chunk.Heading != nil && *r.Chunk.Heading != "" {
+			sb.WriteString(fmt.Sprintf(" %s", *r.Chunk.Heading))
+		}
+		docName := docNameCache[r.Chunk.DocumentID]
+		if docName == "" {
+			docName = r.Chunk.DocumentID
+			if len(docName) > 8 {
+				docName = docName[:8]
+			}
+		}
+		sb.WriteString(fmt.Sprintf(" (来源: %s, 段落: %d, 相关度: %.0f%%)\n",
+			docName, r.Chunk.ChunkIndex, r.Score*100))
+		sb.WriteString(r.Chunk.Content)
+		sb.WriteString("\n\n")
 	}
-	sb.WriteString("---")
+	sb.WriteString("=== End Context ===")
 	return sb.String()
 }
 

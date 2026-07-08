@@ -123,7 +123,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CLI_ADDRESS: temporal:7233
-      DB: postgresql
+      DB: postgres12_pgx
       DB_PORT: 5432
       POSTGRES_USER: omnidev
       POSTGRES_PWD: omnidev
