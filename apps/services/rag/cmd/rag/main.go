@@ -22,6 +22,7 @@ import (
 	"github.com/omnidev/go-common/storage"
 	"github.com/omnidev/go-common/telemetry"
 
+	"github.com/omnidev/services/rag/internal/chunker"
 	"github.com/omnidev/services/rag/internal/embedder"
 	"github.com/omnidev/services/rag/internal/handler"
 	"github.com/omnidev/services/rag/internal/parser"
@@ -90,8 +91,19 @@ func main() {
 	// Components
 	docParser := parser.NewDocParser()
 	chunker := chunker.NewSemanticChunker(512, 50)
-	embedder := embedder.NewOpenAIEmbedder(cfg.AI.OpenAI)
-	retriever := retriever.NewHybridRetriever(db.Pool, embedder)
+
+	// Select embedding provider based on config
+	var emb embedder.Embedder
+	switch cfg.AI.EmbeddingModel {
+	case "gemini-embedding-2":
+		emb = embedder.NewGeminiEmbedder(cfg.AI.Google)
+		logger.Log.Info("Using Gemini embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	default:
+		emb = embedder.NewOpenAIEmbedder(cfg.AI.OpenAI)
+		logger.Log.Info("Using OpenAI embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	}
+
+	retriever := retriever.NewHybridRetriever(db.Pool, emb)
 
 	// Repositories
 	kbRepo := repository.NewKnowledgeBaseRepository(db.Pool)
@@ -99,7 +111,7 @@ func main() {
 	chunkRepo := repository.NewChunkRepository(db.Pool)
 
 	// Services
-	kbSvc := service.NewKnowledgeBaseService(kbRepo, docRepo, chunkRepo, minioClient, docParser, chunker, embedder)
+	kbSvc := service.NewKnowledgeBaseService(kbRepo, docRepo, chunkRepo, minioClient, docParser, chunker, emb)
 	searchSvc := service.NewSearchService(retriever, chunkRepo)
 
 	// Handlers
@@ -113,7 +125,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(middleware.RequestID(), middleware.Logger(), middleware.Recovery())
-	r.Use(middleware.CORS([]string{"http://localhost:3000", "http://localhost:9090"}))
+	r.Use(middleware.CORS([]string{"*"}))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "rag"})

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Message, Attachment, GenerateImageParams } from "@/lib/api/client";
+import { api, type Message, type Attachment, type KnowledgeBase, type GenerateImageParams } from "@/lib/api/client";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { ModelSelector } from "@/components/chat/model-selector";
 import {
@@ -19,7 +19,7 @@ interface ChatAreaProps {
   streamingReasoning: string;
   error: string | null;
   selectedModel: string;
-  onSend: (content: string, attachmentIds?: string[], attachments?: Attachment[]) => Promise<void>;
+  onSend: (content: string, attachmentIds?: string[], attachments?: Attachment[], knowledgeBaseIds?: string[]) => Promise<void>;
   onModelChange: (model: string) => void;
   onClearError: () => void;
   hasConversation: boolean;
@@ -58,6 +58,9 @@ export function ChatArea({
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isImageMode, setIsImageMode] = useState(false);
+  const [selectedKBs, setSelectedKBs] = useState<KnowledgeBase[]>([]);
+  const [showKBSelector, setShowKBSelector] = useState(false);
+  const [availableKBs, setAvailableKBs] = useState<KnowledgeBase[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -142,6 +145,34 @@ export function ChatArea({
     setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  const loadKBs = useCallback(async () => {
+    try {
+      const { data } = await api.listKnowledgeBases({ page_size: 50 });
+      setAvailableKBs(data || []);
+    } catch {
+      // silently fail
+    }
+  }, []);
+
+  const toggleKBSelector = useCallback(() => {
+    if (!showKBSelector && availableKBs.length === 0) {
+      loadKBs();
+    }
+    setShowKBSelector((prev) => !prev);
+  }, [showKBSelector, availableKBs.length, loadKBs]);
+
+  const toggleKB = useCallback((kb: KnowledgeBase) => {
+    setSelectedKBs((prev) => {
+      const exists = prev.some((k) => k.id === kb.id);
+      if (exists) return prev.filter((k) => k.id !== kb.id);
+      return [...prev, kb];
+    });
+  }, []);
+
+  const removeKB = useCallback((kbId: string) => {
+    setSelectedKBs((prev) => prev.filter((k) => k.id !== kbId));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const hasContent = input.trim().length > 0;
@@ -182,7 +213,8 @@ export function ChatArea({
     onClearError();
 
     try {
-      await onSend(content || "(file attachment)", attachmentIds, attachmentsData);
+      const kbIds = selectedKBs.map((kb) => kb.id);
+      await onSend(content || "(file attachment)", attachmentIds, attachmentsData, kbIds.length > 0 ? kbIds : undefined);
     } catch {
       // Restore input on error so user can retry
       setInput(content);
@@ -251,6 +283,52 @@ export function ChatArea({
                 <span>{isImageMode ? "💬" : "🎨"}</span>
                 <span>{isImageMode ? "Chat" : "Image"}</span>
               </button>
+              {!isImageMode && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={toggleKBSelector}
+                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                      selectedKBs.length > 0
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                    title="Attach knowledge base for RAG context"
+                  >
+                    <span>📚</span>
+                    <span>KB{selectedKBs.length > 0 ? ` (${selectedKBs.length})` : ""}</span>
+                  </button>
+                  {showKBSelector && (
+                    <div className="absolute bottom-full right-0 mb-1 w-64 max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-md z-50">
+                      {availableKBs.length === 0 ? (
+                        <div className="p-3 text-xs text-muted-foreground text-center">
+                          No knowledge bases found
+                        </div>
+                      ) : (
+                        availableKBs.map((kb) => {
+                          const isSelected = selectedKBs.some((k) => k.id === kb.id);
+                          return (
+                            <button
+                              key={kb.id}
+                              type="button"
+                              onClick={() => toggleKB(kb)}
+                              className={`w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center gap-2 ${
+                                isSelected ? "bg-blue-50" : ""
+                              }`}
+                            >
+                              <span className={isSelected ? "text-blue-600" : "text-muted-foreground"}>
+                                {isSelected ? "✓" : "○"}
+                              </span>
+                              <span className="flex-1 truncate">{kb.name}</span>
+                              <span className="text-muted-foreground">{kb.doc_count} docs</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             {/* Upload error */}
             {uploadError && (
@@ -443,11 +521,74 @@ export function ChatArea({
               <span>{isImageMode ? "💬" : "🎨"}</span>
               <span>{isImageMode ? "Chat" : "Image"}</span>
             </button>
+            {!isImageMode && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={toggleKBSelector}
+                  className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                    selectedKBs.length > 0
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                  title="Attach knowledge base for RAG context"
+                >
+                  <span>📚</span>
+                  <span>KB{selectedKBs.length > 0 ? ` (${selectedKBs.length})` : ""}</span>
+                </button>
+                {showKBSelector && (
+                  <div className="absolute bottom-full right-0 mb-1 w-64 max-h-48 overflow-y-auto rounded-lg border bg-popover shadow-md z-50">
+                    {availableKBs.length === 0 ? (
+                      <div className="p-3 text-xs text-muted-foreground text-center">
+                        No knowledge bases found
+                      </div>
+                    ) : (
+                      availableKBs.map((kb) => {
+                        const isSelected = selectedKBs.some((k) => k.id === kb.id);
+                        return (
+                          <button
+                            key={kb.id}
+                            type="button"
+                            onClick={() => toggleKB(kb)}
+                            className={`w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors flex items-center gap-2 ${
+                              isSelected ? "bg-blue-50" : ""
+                            }`}
+                          >
+                            <span className={isSelected ? "text-blue-600" : "text-muted-foreground"}>
+                              {isSelected ? "✓" : "○"}
+                            </span>
+                            <span className="flex-1 truncate">{kb.name}</span>
+                            <span className="text-muted-foreground">{kb.doc_count} docs</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           {/* Upload error */}
           {uploadError && (
             <div className="mt-2 text-xs text-destructive bg-destructive/10 px-3 py-1.5 rounded">
               {uploadError}
+            </div>
+          )}
+          {/* Selected knowledge bases */}
+          {selectedKBs.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {selectedKBs.map((kb) => (
+                <span key={kb.id} className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs">
+                  📚 {kb.name}
+                  <button
+                    type="button"
+                    onClick={() => removeKB(kb.id)}
+                    className="ml-0.5 hover:text-blue-900"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
             </div>
           )}
           {/* Attachment previews */}
@@ -474,6 +615,8 @@ export function ChatArea({
               placeholder={
                 isImageMode
                   ? "Describe the image you want to generate..."
+                  : selectedKBs.length > 0
+                  ? `Ask with ${selectedKBs.map((kb) => kb.name).join(", ")} context...`
                   : "Type your message... (Shift+Enter for new line)"
               }
               className="flex-1 resize-none rounded-lg border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"

@@ -58,8 +58,8 @@ export default function ChatPage() {
     await deleteConversation(id);
   };
 
-  const handleSendMessage = async (content: string, attachmentIds?: string[], attachments?: import("@/lib/api/client").Attachment[]) => {
-    await sendMessage(content, attachmentIds, attachments);
+  const handleSendMessage = async (content: string, attachmentIds?: string[], attachments?: import("@/lib/api/client").Attachment[], knowledgeBaseIds?: string[]) => {
+    await sendMessage(content, attachmentIds, attachments, knowledgeBaseIds);
   };
 
   const handleGenerateImage = async (params: GenerateImageParams) => {

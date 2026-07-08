@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     org_id         UUID,
     name           VARCHAR(100) NOT NULL,
     description    TEXT,
-    embedding_model VARCHAR(100) NOT NULL DEFAULT 'text-embedding-3-small',
+    embedding_model VARCHAR(100) NOT NULL DEFAULT 'gemini-embedding-2',
     chunk_size     INT NOT NULL DEFAULT 512,
     chunk_overlap  INT NOT NULL DEFAULT 50,
     doc_count      INT NOT NULL DEFAULT 0,
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     end_page         INT,
     heading          TEXT,
     metadata         JSONB NOT NULL DEFAULT '{}',
-    embedding        vector(1536),
+    embedding        vector(768),
     content_tsv      tsvector,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 

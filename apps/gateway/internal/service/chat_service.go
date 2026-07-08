@@ -37,6 +37,7 @@ type ChatService struct {
 	userConfigRepo  repository.UserAIConfigRepository
 	cache           *cache.Redis
 	defaultModel    string
+	ragService      *RAGService
 }
 
 // NewChatService creates a new chat service.
@@ -69,6 +70,8 @@ func NewChatService(
 			svc.minioCli = v
 		case parser.Parser:
 			svc.parser = v
+		case *RAGService:
+			svc.ragService = v
 		}
 	}
 	return svc
@@ -76,9 +79,10 @@ func NewChatService(
 
 // SendMessageInput defines the input for sending a message.
 type SendMessageInput struct {
-	Content       string   `json:"content" validate:"required"`
-	ModelID       string   `json:"model_id"`
-	AttachmentIDs []string `json:"attachment_ids,omitempty"`
+	Content          string   `json:"content" validate:"required"`
+	ModelID          string   `json:"model_id"`
+	AttachmentIDs    []string `json:"attachment_ids,omitempty"`
+	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
 }
 
 // SendMessage sends a message and returns the AI response.
@@ -405,9 +409,18 @@ func (s *ChatService) ListAvailableModelsForUser(ctx context.Context, userID uui
 
 // buildAdapterMessages converts domain messages to adapter messages with multimodal support.
 func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Conversation, recentMsgs []*domain.Message, input *SendMessageInput) []adapter.Message {
-	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+1)
+	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+2)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
 		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
+	}
+
+	// Inject RAG context if knowledge bases are referenced
+	if len(input.KnowledgeBaseIDs) > 0 && s.ragService != nil {
+		ragContext := s.retrieveRAGContext(ctx, input.Content, input.KnowledgeBaseIDs)
+		if ragContext != "" {
+			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system",
+				"The following context was retrieved from the user's knowledge bases. Use it to answer the user's question when relevant. Cite the source when using information from the knowledge base.\n\n"+ragContext))
+		}
 	}
 
 	for _, msg := range recentMsgs {
@@ -487,6 +500,45 @@ func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Con
 	}
 
 	return adapterMsgs
+}
+
+// retrieveRAGContext searches knowledge bases and formats the results as context for the LLM.
+func (s *ChatService) retrieveRAGContext(ctx context.Context, query string, kbIDs []string) string {
+	if s.ragService == nil {
+		return ""
+	}
+
+	// Get the auth token from context (passed by handler)
+	token, _ := ctx.Value("auth_token").(string)
+	if token == "" {
+		return ""
+	}
+
+	var allResults []RAGSearchResult
+	for _, kbID := range kbIDs {
+		results, err := s.ragService.Search(ctx, token, kbID, query, 3)
+		if err != nil {
+			logger.Log.Warn("RAG search failed for KB", zap.String("kb_id", kbID), zap.Error(err))
+			continue
+		}
+		allResults = append(allResults, results...)
+	}
+
+	if len(allResults) == 0 {
+		return ""
+	}
+
+	// Format context
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	for i, r := range allResults {
+		if i >= 10 { // Limit to top 10 results total
+			break
+		}
+		sb.WriteString(fmt.Sprintf("[Source %d | Score: %.3f]\n%s\n\n", i+1, r.Score, r.Chunk.Content))
+	}
+	sb.WriteString("---")
+	return sb.String()
 }
 
 // emitUsageEvent publishes a usage event for billing.

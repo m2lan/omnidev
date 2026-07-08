@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // ParseResult represents the result of parsing a document.
@@ -57,7 +58,7 @@ func (p *DocParser) parseText(reader io.Reader) (*ParseResult, error) {
 		return nil, fmt.Errorf("failed to read text: %w", err)
 	}
 
-	content := string(data)
+	content := sanitizeUTF8(string(data))
 	lines := strings.Split(content, "\n")
 
 	return &ParseResult{
@@ -79,7 +80,7 @@ func (p *DocParser) parsePDF(reader io.Reader) (*ParseResult, error) {
 
 	// Basic PDF text extraction
 	// In production, use a proper PDF library like pdfcpu or unidoc
-	content := extractPDFText(data)
+	content := sanitizeUTF8(extractPDFText(data))
 
 	return &ParseResult{
 		Content: content,
@@ -99,7 +100,7 @@ func (p *DocParser) parseDOCX(reader io.Reader) (*ParseResult, error) {
 	}
 
 	// DOCX is a ZIP archive containing XML files
-	content := extractDOCXText(data)
+	content := sanitizeUTF8(extractDOCXText(data))
 
 	return &ParseResult{
 		Content: content,
@@ -117,7 +118,7 @@ func (p *DocParser) parsePPTX(reader io.Reader) (*ParseResult, error) {
 		return nil, fmt.Errorf("failed to read PPTX: %w", err)
 	}
 
-	content := extractPPTXText(data)
+	content := sanitizeUTF8(extractPPTXText(data))
 
 	return &ParseResult{
 		Content: content,
@@ -135,7 +136,7 @@ func (p *DocParser) parseSpreadsheet(reader io.Reader) (*ParseResult, error) {
 		return nil, fmt.Errorf("failed to read spreadsheet: %w", err)
 	}
 
-	content := string(data)
+	content := sanitizeUTF8(string(data))
 
 	return &ParseResult{
 		Content: content,
@@ -154,7 +155,7 @@ func (p *DocParser) parseJSON(reader io.Reader) (*ParseResult, error) {
 	}
 
 	return &ParseResult{
-		Content: string(data),
+		Content: sanitizeUTF8(string(data)),
 		Pages:   1,
 		Metadata: map[string]interface{}{
 			"format": "json",
@@ -169,7 +170,7 @@ func (p *DocParser) parseHTML(reader io.Reader) (*ParseResult, error) {
 		return nil, fmt.Errorf("failed to read HTML: %w", err)
 	}
 
-	content := stripHTMLTags(string(data))
+	content := sanitizeUTF8(stripHTMLTags(string(data)))
 
 	return &ParseResult{
 		Content: content,
@@ -187,7 +188,7 @@ func (p *DocParser) parseCode(reader io.Reader, ext string) (*ParseResult, error
 		return nil, fmt.Errorf("failed to read code: %w", err)
 	}
 
-	content := string(data)
+	content := sanitizeUTF8(string(data))
 	lines := strings.Split(content, "\n")
 
 	return &ParseResult{
@@ -202,6 +203,14 @@ func (p *DocParser) parseCode(reader io.Reader, ext string) (*ParseResult, error
 }
 
 // --- Helper functions ---
+
+// sanitizeUTF8 removes invalid UTF-8 byte sequences from a string.
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "")
+}
 
 func estimatePages(charCount int) int {
 	// Assume ~2000 chars per page

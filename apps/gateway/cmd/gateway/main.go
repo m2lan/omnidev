@@ -29,6 +29,15 @@ import (
 	"github.com/omnidev/gateway/internal/repository"
 	"github.com/omnidev/gateway/internal/router"
 	"github.com/omnidev/gateway/internal/service"
+
+	// RAG (embedded)
+	ragchunker "github.com/omnidev/gateway/internal/rag/chunker"
+	ragembedder "github.com/omnidev/gateway/internal/rag/embedder"
+	raghandler "github.com/omnidev/gateway/internal/rag/handler"
+	ragparser "github.com/omnidev/gateway/internal/rag/parser"
+	ragrepo "github.com/omnidev/gateway/internal/rag/repository"
+	ragretriever "github.com/omnidev/gateway/internal/rag/retriever"
+	ragservice "github.com/omnidev/gateway/internal/rag/service"
 )
 
 var (
@@ -180,22 +189,44 @@ func main() {
 		uploadHandler = handler.NewUploadHandler(uploadService)
 	}
 
+	// RAG (embedded) — Knowledge Base + Document + Search
+	ragDocParser := ragparser.NewDocParser()
+	ragChunker := ragchunker.NewSemanticChunker(512, 50)
+
+	// Select embedding provider based on config
+	var ragEmb ragembedder.Embedder
+	switch cfg.AI.EmbeddingModel {
+	case "gemini-embedding-2":
+		ragEmb = ragembedder.NewGeminiEmbedder(cfg.AI.Google)
+		logger.Log.Info("Using Gemini embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	default:
+		ragEmb = ragembedder.NewOpenAIEmbedder(cfg.AI.OpenAI, cfg.AI.EmbeddingModel)
+		logger.Log.Info("Using OpenAI embedding", zap.String("model", cfg.AI.EmbeddingModel))
+	}
+
+	ragRetriever := ragretriever.NewHybridRetriever(db.Pool, ragEmb)
+	ragKBRepo := ragrepo.NewKnowledgeBaseRepository(db.Pool)
+	ragDocRepo := ragrepo.NewDocumentRepository(db.Pool)
+	ragChunkRepo := ragrepo.NewChunkRepository(db.Pool)
+	ragKBSvc := ragservice.NewKnowledgeBaseService(ragKBRepo, ragDocRepo, ragChunkRepo, minioClient, ragDocParser, ragChunker, ragEmb)
+	ragSearchSvc := ragservice.NewSearchService(ragRetriever, ragChunkRepo)
+	ragKBHandler := raghandler.NewKnowledgeBaseHandler(ragKBSvc)
+	ragSearchHandler := raghandler.NewSearchHandler(ragSearchSvc)
+
 	// Setup Gin
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	r := gin.New()
+	r.RedirectTrailingSlash = false
 
 	// Global middleware
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger())
 	r.Use(middleware.Recovery())
-	// CORS: allow all origins in development
-	corsOrigins := []string{"http://localhost:3000", "http://localhost:9090"}
-	if cfg.App.Env != "production" {
-		corsOrigins = []string{"*"}
-	}
+	// CORS: allow all origins (restrict in production via reverse proxy)
+	corsOrigins := []string{"*"}
 	r.Use(middleware.CORS(corsOrigins))
 
 	// Rate limiter (if Redis is available)
@@ -205,7 +236,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler, ragKBHandler, ragSearchHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

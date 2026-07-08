@@ -10,6 +10,7 @@ import (
 	"github.com/omnidev/go-common/middleware"
 
 	"github.com/omnidev/gateway/internal/handler"
+	raghandler "github.com/omnidev/gateway/internal/rag/handler"
 )
 
 // Setup configures all routes for the API Gateway.
@@ -21,6 +22,8 @@ func Setup(
 	chatHandler *handler.ChatHandler,
 	userAIConfigHandler *handler.UserAIConfigHandler,
 	uploadHandler *handler.UploadHandler,
+	ragKBHandler *raghandler.KnowledgeBaseHandler,
+	ragSearchHandler *raghandler.SearchHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -88,6 +91,20 @@ func Setup(
 				aiConfigs.DELETE("/:id", userAIConfigHandler.Delete)
 				aiConfigs.PUT("/:id/default", userAIConfigHandler.SetDefault)
 				aiConfigs.POST("/:id/test", userAIConfigHandler.TestConnection)
+			}
+
+			// Knowledge (RAG — embedded)
+			knowledge := protected.Group("/knowledge")
+			{
+				knowledge.GET("", ragKBHandler.ListKnowledgeBases)
+				knowledge.POST("", ragKBHandler.CreateKnowledgeBase)
+				knowledge.GET("/:id", ragKBHandler.GetKnowledgeBase)
+				knowledge.PATCH("/:id", ragKBHandler.UpdateKnowledgeBase)
+				knowledge.DELETE("/:id", ragKBHandler.DeleteKnowledgeBase)
+				knowledge.GET("/:id/documents", ragKBHandler.ListDocuments)
+				knowledge.POST("/:id/documents", ragKBHandler.UploadDocument)
+				knowledge.DELETE("/:id/documents/:doc_id", ragKBHandler.DeleteDocument)
+				knowledge.POST("/:id/search", ragSearchHandler.Search)
 			}
 		}
 

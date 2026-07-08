@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api, type KnowledgeBase } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { formatRelativeTime } from "@/lib/utils";
 
 export default function KnowledgePage() {
+  const router = useRouter();
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -153,7 +155,7 @@ export default function KnowledgePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {knowledgeBases.map((kb) => (
-            <Card key={kb.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedKB(kb.id)}>
+            <Card key={kb.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/knowledge/${kb.id}`)}>
               <CardHeader>
                 <CardTitle className="text-lg">{kb.name}</CardTitle>
                 <CardDescription>{kb.description || "No description"}</CardDescription>

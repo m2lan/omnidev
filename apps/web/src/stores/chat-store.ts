@@ -40,7 +40,7 @@ interface ChatState {
   createConversation: (title?: string) => Promise<Conversation>;
   setActiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
-  sendMessage: (content: string, attachmentIds?: string[], attachments?: Attachment[]) => Promise<void>;
+  sendMessage: (content: string, attachmentIds?: string[], attachments?: Attachment[], knowledgeBaseIds?: string[]) => Promise<void>;
   generateImage: (params: GenerateImageParams) => Promise<void>;
   setSelectedModel: (model: string) => void;
   clearError: () => void;
@@ -167,7 +167,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (content: string, attachmentIds?: string[], attachments?: Attachment[]) => {
+  sendMessage: async (content: string, attachmentIds?: string[], attachments?: Attachment[], knowledgeBaseIds?: string[]) => {
     let { activeConversationId } = get();
     const { selectedModel } = get();
 
@@ -293,7 +293,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             error: errorMsg,
           };
         });
-      }
+      },
+      // knowledgeBaseIds
+      knowledgeBaseIds
     );
   },
 

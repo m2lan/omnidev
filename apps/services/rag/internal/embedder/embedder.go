@@ -158,3 +158,104 @@ type openaiEmbeddingResponse struct {
 		TotalTokens  int `json:"total_tokens"`
 	} `json:"usage"`
 }
+
+// GeminiEmbedder implements the Embedder interface using Google's Gemini embedding API.
+type GeminiEmbedder struct {
+	apiKey     string
+	model      string
+	dimensions int
+	client     *http.Client
+}
+
+// NewGeminiEmbedder creates a new Gemini embedder.
+func NewGeminiEmbedder(cfg config.AIProviderConfig) *GeminiEmbedder {
+	model := "gemini-embedding-2"
+	if cfg.BaseURL != "" {
+		model = cfg.BaseURL // allow model override via base_url field for simplicity
+	}
+
+	return &GeminiEmbedder{
+		apiKey:     cfg.APIKey,
+		model:      model,
+		dimensions: 768,
+		client:     &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (e *GeminiEmbedder) Model() string    { return e.model }
+func (e *GeminiEmbedder) Dimensions() int  { return e.dimensions }
+
+func (e *GeminiEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	body := map[string]interface{}{
+		"model": "models/" + e.model,
+		"content": map[string]interface{}{
+			"parts": []map[string]string{{"text": text}},
+		},
+		"output_dimensionality": e.dimensions,
+	}
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent", e.model)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", e.apiKey)
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result geminiEmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	vec := make([]float32, len(result.Embedding.Values))
+	for i, v := range result.Embedding.Values {
+		vec[i] = float32(v)
+	}
+
+	logger.Log.Debug("Gemini embedding generated",
+		zap.String("model", e.model),
+		zap.Int("dimensions", len(vec)),
+	)
+
+	return vec, nil
+}
+
+func (e *GeminiEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	// Gemini doesn't have a native batch endpoint, process one by one
+	vectors := make([][]float32, len(texts))
+	for i, text := range texts {
+		vec, err := e.Embed(ctx, text)
+		if err != nil {
+			return nil, fmt.Errorf("failed to embed text %d: %w", i, err)
+		}
+		vectors[i] = vec
+	}
+
+	return vectors, nil
+}
+
+type geminiEmbedResponse struct {
+	Embedding struct {
+		Values []float64 `json:"values"`
+	} `json:"embedding"`
+}

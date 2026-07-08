@@ -241,7 +241,8 @@ class ApiClient {
     onChunk: (delta: string, type?: string) => void,
     onUserMessage: (msg: Message) => void,
     onComplete: (assistantMsg: Message) => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    knowledgeBaseIds?: string[]
   ) {
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -252,11 +253,14 @@ class ApiClient {
     }
 
     try {
-      const requestBody = {
+      const requestBody: Record<string, unknown> = {
         content,
         model_id: modelId,
         attachment_ids: attachmentIds,
       };
+      if (knowledgeBaseIds && knowledgeBaseIds.length > 0) {
+        requestBody.knowledge_base_ids = knowledgeBaseIds;
+      }
       console.log("Sending stream request:", requestBody);
       const response = await fetch(
         `${this.baseUrl}/api/v1/conversations/${conversationId}/messages/stream`,
@@ -354,6 +358,53 @@ class ApiClient {
       `/api/v1/knowledge/${kbId}/search`,
       { query, top_k: topK || 5 }
     );
+  }
+
+  async getKnowledgeBase(id: string) {
+    return this.get<ApiResponse<KnowledgeBase>>(`/api/v1/knowledge/${id}`);
+  }
+
+  async updateKnowledgeBase(id: string, data: Partial<CreateKBInput>) {
+    return this.patch<ApiResponse<KnowledgeBase>>(`/api/v1/knowledge/${id}`, data);
+  }
+
+  async deleteKnowledgeBase(id: string) {
+    return this.delete<ApiResponse<{ message: string }>>(`/api/v1/knowledge/${id}`);
+  }
+
+  async listDocuments(kbId: string, params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    return this.get<ApiResponse<Document[]>>(`/api/v1/knowledge/${kbId}/documents?${query}`);
+  }
+
+  async uploadDocument(kbId: string, file: File): Promise<ApiResponse<Document>> {
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const resp = await fetch(`${this.baseUrl}/api/v1/knowledge/${kbId}/documents`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err?.error?.detail || `Upload failed (${resp.status})`);
+    }
+
+    return resp.json();
+  }
+
+  async deleteDocument(kbId: string, docId: string) {
+    return this.delete<ApiResponse<{ message: string }>>(`/api/v1/knowledge/${kbId}/documents/${docId}`);
   }
 
   // Models
@@ -556,12 +607,38 @@ export interface Model {
 
 export interface KnowledgeBase {
   id: string;
+  user_id: string;
   name: string;
   description?: string;
+  embedding_model: string;
+  chunk_size: number;
+  chunk_overlap: number;
   doc_count: number;
   chunk_count: number;
   total_tokens: number;
+  total_size: number;
+  status: string;
   created_at: string;
+  updated_at: string;
+}
+
+export type DocumentStatus = "uploading" | "processing" | "ready" | "failed";
+
+export interface Document {
+  id: string;
+  knowledge_base_id: string;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  file_url: string;
+  status: DocumentStatus;
+  error?: string;
+  chunk_count: number;
+  total_tokens: number;
+  metadata: Record<string, unknown>;
+  processed_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SearchResult {

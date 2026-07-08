@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -264,7 +264,13 @@ func (s *KnowledgeBaseService) processDocument(ctx context.Context, kb *domain.K
 	docChunks := make([]domain.DocumentChunk, len(chunks))
 	totalTokens := int64(0)
 	for i, chunk := range chunks {
-		tokenCount := chunker.EstimateTokens(chunk.Content)
+		// Ensure chunk content is valid UTF-8 before storing
+		content := chunk.Content
+		if !utf8.ValidString(content) {
+			content = strings.ToValidUTF8(content, "")
+		}
+
+		tokenCount := chunker.EstimateTokens(content)
 		totalTokens += int64(tokenCount)
 
 		docChunks[i] = domain.DocumentChunk{
@@ -272,8 +278,8 @@ func (s *KnowledgeBaseService) processDocument(ctx context.Context, kb *domain.K
 			DocumentID:      doc.ID,
 			KnowledgeBaseID: kb.ID,
 			ChunkIndex:      i,
-			Content:         chunk.Content,
-			ContentLength:   len(chunk.Content),
+			Content:         content,
+			ContentLength:   len(content),
 			TokenCount:      tokenCount,
 			Metadata:        chunk.Metadata,
 			Embedding:       vectors[i],

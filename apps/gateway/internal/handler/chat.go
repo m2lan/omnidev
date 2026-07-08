@@ -2,10 +2,12 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -235,7 +237,13 @@ func (h *ChatHandler) SendMessage(c *gin.Context) {
 		input.Content = "(file attachment)"
 	}
 
-	userMsg, assistantMsg, err := h.chatSvc.SendMessage(c.Request.Context(), userID, convID, &input)
+	// Inject auth token into context for RAG service calls
+	ctx := c.Request.Context()
+	if token := c.GetHeader("Authorization"); token != "" {
+		ctx = context.WithValue(ctx, "auth_token", strings.TrimPrefix(token, "Bearer "))
+	}
+
+	userMsg, assistantMsg, err := h.chatSvc.SendMessage(ctx, userID, convID, &input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
@@ -279,7 +287,13 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 		input.Content = "(file attachment)"
 	}
 
-	stream, userMsg, err := h.chatSvc.StreamMessage(c.Request.Context(), userID, convID, &input)
+	// Inject auth token into context for RAG service calls
+	ctx := c.Request.Context()
+	if token := c.GetHeader("Authorization"); token != "" {
+		ctx = context.WithValue(ctx, "auth_token", strings.TrimPrefix(token, "Bearer "))
+	}
+
+	stream, userMsg, err := h.chatSvc.StreamMessage(ctx, userID, convID, &input)
 	if err != nil {
 		chatHandleError(c, err)
 		return
