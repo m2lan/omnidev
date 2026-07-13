@@ -222,6 +222,50 @@ export function ChatArea({
     }
   };
 
+  // Paste handler: upload pasted files/images as attachments
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent) => {
+      if (isSending || isImageMode) return;
+
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+
+      const files: File[] = [];
+      for (const item of Array.from(items)) {
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+
+      if (files.length === 0) return; // text-only paste, let default handle
+
+      e.preventDefault(); // prevent default paste for files
+
+      for (const file of files) {
+        // Validate size (20MB)
+        if (file.size > 20 * 1024 * 1024) {
+          setUploadError(`Pasted file is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 20MB.`);
+          setTimeout(() => setUploadError(null), 5000);
+          continue;
+        }
+
+        // Upload the pasted file
+        try {
+          const { data } = await api.uploadFile(file);
+          setPendingAttachments((prev) => [...prev, data]);
+          setUploadError(null);
+        } catch (err) {
+          setUploadError(
+            err instanceof Error ? err.message : "Failed to upload pasted file"
+          );
+          setTimeout(() => setUploadError(null), 5000);
+        }
+      }
+    },
+    [isSending, isImageMode]
+  );
+
   // Empty state
   if (!hasConversation || (messages.length === 0 && !isSending)) {
     return (
@@ -351,6 +395,7 @@ export function ChatArea({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={
                   isImageMode
                     ? "Describe the image you want to generate..."
@@ -606,6 +651,7 @@ export function ChatArea({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={
                 isImageMode
                   ? "Describe the image you want to generate..."
