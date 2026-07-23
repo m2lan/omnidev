@@ -19,6 +19,7 @@ import (
 	"github.com/omnidev/go-common/parser"
 	"github.com/omnidev/go-common/storage"
 
+	"github.com/omnidev/go-common/a2ui"
 	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/domain"
 	"github.com/omnidev/gateway/internal/repository"
@@ -274,34 +275,99 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		defer close(ch)
 
 		var fullContent string
+		var pending string     // text accumulated but not yet sent to client
+		processedBlocks := 0  // number of ```a2ui blocks already sent
 		start := time.Now()
 
-		for chunk := range stream {
-			// Only accumulate non-reasoning content for message persistence
-			if chunk.Type != "reasoning" {
-				fullContent += chunk.Delta
+		// Flush pending text to client
+		flushPending := func(id string, chunkType string) {
+			if pending != "" {
+				ch <- domain.ChatChunk{ID: id, Delta: pending, Type: chunkType, ModelID: modelID}
+				pending = ""
 			}
-			ch <- domain.ChatChunk{
-				ID:           chunk.ID,
-				Delta:        chunk.Delta,
-				Type:         chunk.Type,
-				FinishReason: chunk.Finish,
-				ModelID:      modelID,
+		}
+
+		for chunk := range stream {
+			// Skip A2UI detection for reasoning chunks — pass through directly
+			if chunk.Type == "reasoning" {
+				ch <- domain.ChatChunk{
+					ID:           chunk.ID,
+					Delta:        chunk.Delta,
+					Type:         chunk.Type,
+					FinishReason: chunk.Finish,
+					ModelID:      modelID,
+				}
+				continue
 			}
 
+			fullContent += chunk.Delta
+			pending += chunk.Delta
+
+			// 1. Check for complete ```a2ui blocks
+			extracted := a2ui.ExtractA2UIBlocks(fullContent)
+			if len(extracted.RawJSONs) > processedBlocks {
+				// Found complete block(s) — clear pending, send clean text + A2UI
+				pending = ""
+				if extracted.CleanText != "" {
+					ch <- domain.ChatChunk{ID: chunk.ID, Delta: extracted.CleanText, ModelID: modelID}
+				}
+				for i := processedBlocks; i < len(extracted.RawJSONs); i++ {
+					ch <- domain.ChatChunk{
+						ID:           chunk.ID,
+						ContentType:  "a2ui",
+						A2UIMessages: []interface{}{extracted.RawJSONs[i]},
+						ModelID:      modelID,
+					}
+				}
+				processedBlocks = len(extracted.RawJSONs)
+				continue
+			}
+
+			// 2. Inside an open (incomplete) ```a2ui block — hold everything
+			if a2ui.HasOpenA2UIBlock(fullContent) {
+				continue
+			}
+
+			// 3. Pending text ends with a prefix of "```a2ui" — might be starting a block
+			//    Send everything EXCEPT the potential prefix
+			if a2ui.EndsLikeA2UIPrefix(pending) {
+				marker := "```a2ui"
+				holdLen := 0
+				for i := 1; i <= len(marker) && i <= len(pending); i++ {
+					if pending[len(pending)-i:] == marker[:i] {
+						holdLen = i
+					}
+				}
+				if len(pending) > holdLen {
+					toSend := pending[:len(pending)-holdLen]
+					ch <- domain.ChatChunk{ID: chunk.ID, Delta: toSend, ModelID: modelID}
+					pending = pending[len(pending)-holdLen:]
+				}
+				continue
+			}
+
+			// 4. Safe to send — flush all pending text
+			flushPending(chunk.ID, "")
+
 			if chunk.Finish == "stop" {
+				flushPending(chunk.ID, "")
+
 				latency := int(time.Since(start).Milliseconds())
 
 				// Estimate token counts
 				inputTokens := estimateTokens(adapterMsgs)
 				outputTokens := estimateTokensString(fullContent)
 
-				// Save complete assistant message
+				// Save complete assistant message (clean text only, no A2UI blocks)
+				cleanContent := fullContent
+				if a2ui.IsA2UIBlock(fullContent) {
+					cleanContent = a2ui.ExtractA2UIBlocks(fullContent).CleanText
+				}
 				assistantMsg := &domain.Message{
 					ID:             uuid.New(),
 					ConversationID: convID,
 					Role:           domain.MessageRoleAssistant,
-					Content:        fullContent,
+					Content:        cleanContent,
 					ModelID:        &modelID,
 					TokenInput:     &inputTokens,
 					TokenOutput:    &outputTokens,

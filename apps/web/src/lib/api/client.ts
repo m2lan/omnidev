@@ -251,7 +251,8 @@ class ApiClient {
     onUserMessage: (msg: Message) => void,
     onComplete: (assistantMsg: Message) => void,
     onError: (error: string) => void,
-    knowledgeBaseIds?: string[]
+    knowledgeBaseIds?: string[],
+    onA2UIChunk?: (messages: object[]) => void
   ) {
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -328,6 +329,14 @@ class ApiClient {
               // Check for user_message event
               if (parsed.id && parsed.role === "user") {
                 onUserMessage(parsed);
+                currentEvent = "";
+                continue;
+              }
+
+              // Check for A2UI messages
+              if (currentEvent === "a2ui" && onA2UIChunk) {
+                const a2uiMessages = Array.isArray(parsed) ? parsed : [parsed];
+                onA2UIChunk(a2uiMessages);
                 currentEvent = "";
                 continue;
               }
@@ -594,6 +603,8 @@ export interface Message {
   conversation_id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  content_type?: "text" | "markdown" | "a2ui";
+  a2ui_messages?: object[];
   model_id?: string;
   token_input?: number;
   token_output?: number;

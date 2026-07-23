@@ -221,6 +221,15 @@ func (s *AgentService) executeRun(ctx context.Context, agent *domain.Agent, run 
 			step.Error = &stepResult.Error
 		}
 
+		// Store A2UI messages in step metadata
+		if stepResult.ContentType == "a2ui" && len(stepResult.A2UIMessages) > 0 {
+			if step.Metadata == nil {
+				step.Metadata = map[string]interface{}{}
+			}
+			step.Metadata["content_type"] = "a2ui"
+			step.Metadata["a2ui_messages"] = stepResult.A2UIMessages
+		}
+
 		_ = s.stepRepo.Create(ctx, step)
 		_ = s.runRepo.UpdateProgress(ctx, run.ID, completedSteps)
 

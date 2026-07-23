@@ -279,6 +279,16 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 
 	// Stream AI response
 	for chunk := range stream {
+		// Handle A2UI messages separately
+		if chunk.ContentType == "a2ui" && len(chunk.A2UIMessages) > 0 {
+			for _, a2uiMsg := range chunk.A2UIMessages {
+				a2uiData, _ := json.Marshal(a2uiMsg)
+				fmt.Fprintf(c.Writer, "event: a2ui\ndata: %s\n\n", a2uiData)
+				c.Writer.Flush()
+			}
+			continue
+		}
+
 		data, _ := json.Marshal(chunk)
 		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 		c.Writer.Flush()

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Message, Attachment } from "@/lib/api/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { GeneratedImage } from "@/components/chat/image-generation-animation";
+import { A2UIRenderer } from "@/components/a2ui";
 
 interface MessageBubbleProps {
   message: Message;
@@ -197,6 +198,16 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
           )}
           {isUser ? (
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          ) : message.content_type === "a2ui" && message.a2ui_messages ? (
+            <div className="a2ui-container">
+              {message.content && (
+                <p className="text-sm mb-2 text-muted-foreground">{message.content}</p>
+              )}
+              <A2UIRenderer
+                messages={message.a2ui_messages}
+                className="border rounded-lg p-3 bg-background"
+              />
+            </div>
           ) : isStreaming ? (
             // Streaming: render as plain text to avoid broken markdown
             <p className="text-sm whitespace-pre-wrap">

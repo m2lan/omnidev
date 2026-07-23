@@ -12,6 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@a2ui/react": "^0.10.2",
+    "@a2ui/web_core": "^0.10.5",
     "@hookform/resolvers": "^3.6.0",
     "@monaco-editor/react": "^4.6.0",
     "@radix-ui/react-avatar": "^1.1.0",

@@ -125,6 +125,7 @@ type Step struct {
 	LatencyMs   *int                   `json:"latency_ms,omitempty" db:"latency_ms"`
 	StartedAt   *time.Time             `json:"started_at,omitempty" db:"started_at"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty" db:"completed_at"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
 	CreatedAt   time.Time              `json:"created_at" db:"created_at"`
 }
 

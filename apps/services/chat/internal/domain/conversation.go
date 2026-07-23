@@ -70,6 +70,8 @@ type Message struct {
 	ConversationID uuid.UUID          `json:"conversation_id" db:"conversation_id"`
 	Role           MessageRole        `json:"role" db:"role"`
 	Content        string             `json:"content" db:"content"`
+	ContentType    string             `json:"content_type,omitempty" db:"content_type"` // "text", "markdown", "a2ui"
+	A2UIMessages   []interface{}      `json:"a2ui_messages,omitempty" db:"-"`            // A2UI JSON messages (not stored in DB)
 	ModelID        *uuid.UUID         `json:"model_id,omitempty" db:"model_id"`
 	TokenInput     *int               `json:"token_input,omitempty" db:"token_input"`
 	TokenOutput    *int               `json:"token_output,omitempty" db:"token_output"`
@@ -106,12 +108,14 @@ type PromptTemplate struct {
 
 // ChatChunk represents a streaming response chunk.
 type ChatChunk struct {
-	ID           string `json:"id"`
-	Delta        string `json:"delta"`
-	FinishReason string `json:"finish_reason,omitempty"`
-	TokenInput   int    `json:"token_input,omitempty"`
-	TokenOutput  int    `json:"token_output,omitempty"`
-	ModelID      string `json:"model_id,omitempty"`
+	ID           string        `json:"id"`
+	Delta        string        `json:"delta"`
+	FinishReason string        `json:"finish_reason,omitempty"`
+	TokenInput   int           `json:"token_input,omitempty"`
+	TokenOutput  int           `json:"token_output,omitempty"`
+	ModelID      string        `json:"model_id,omitempty"`
+	ContentType  string        `json:"content_type,omitempty"`   // "text", "markdown", "a2ui"
+	A2UIMessages []interface{} `json:"a2ui_messages,omitempty"` // A2UI JSON messages
 }
 
 // Attachment represents a file attachment.

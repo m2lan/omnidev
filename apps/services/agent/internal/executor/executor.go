@@ -27,15 +27,17 @@ type ExecuteResult struct {
 
 // StepResult represents the result of a single step.
 type StepResult struct {
-	StepNumber int                    `json:"step_number"`
-	Type       domain.StepType        `json:"type"`
-	Content    string                 `json:"content"`
-	ToolName   string                 `json:"tool_name,omitempty"`
-	ToolInput  map[string]interface{} `json:"tool_input,omitempty"`
-	ToolOutput map[string]interface{} `json:"tool_output,omitempty"`
-	Status     domain.StepStatus      `json:"status"`
-	Error      string                 `json:"error,omitempty"`
-	LatencyMs  int                    `json:"latency_ms"`
+	StepNumber   int                    `json:"step_number"`
+	Type         domain.StepType        `json:"type"`
+	Content      string                 `json:"content"`
+	ContentType  string                 `json:"content_type,omitempty"`   // "text", "markdown", "a2ui"
+	A2UIMessages []interface{}          `json:"a2ui_messages,omitempty"` // A2UI JSON messages
+	ToolName     string                 `json:"tool_name,omitempty"`
+	ToolInput    map[string]interface{} `json:"tool_input,omitempty"`
+	ToolOutput   map[string]interface{} `json:"tool_output,omitempty"`
+	Status       domain.StepStatus      `json:"status"`
+	Error        string                 `json:"error,omitempty"`
+	LatencyMs    int                    `json:"latency_ms"`
 }
 
 // Executor runs agent tasks step by step.
@@ -195,7 +197,7 @@ func (e *Executor) executeToolCall(ctx context.Context, stepNumber int, step *pl
 		zap.Int("latency_ms", int(time.Since(start).Milliseconds())),
 	)
 
-	return StepResult{
+	result := StepResult{
 		StepNumber: stepNumber,
 		Type:       domain.StepTypeToolCall,
 		ToolName:   step.ToolName,
@@ -204,6 +206,18 @@ func (e *Executor) executeToolCall(ctx context.Context, stepNumber int, step *pl
 		Status:     domain.StepStatusSuccess,
 		LatencyMs:  int(time.Since(start).Milliseconds()),
 	}
+
+	// Check if tool output contains A2UI messages
+	if a2uiMsgs, ok := output["a2ui_messages"]; ok {
+		if msgs, ok := a2uiMsgs.([]interface{}); ok && len(msgs) > 0 {
+			result.ContentType = "a2ui"
+			result.A2UIMessages = msgs
+			// Remove a2ui_messages from ToolOutput to avoid duplication
+			delete(output, "a2ui_messages")
+		}
+	}
+
+	return result
 }
 
 func (e *Executor) executeCode(ctx context.Context, stepNumber int, step *planner.PlannedStep) StepResult {

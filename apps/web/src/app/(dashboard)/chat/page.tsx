@@ -38,6 +38,7 @@ export default function ChatPage() {
   const activeStreaming = activeConversationId ? streamingStates[activeConversationId] : undefined;
   const streamingContent = activeStreaming?.content || "";
   const streamingReasoning = activeStreaming?.reasoning || "";
+  const streamingA2UIMessages = activeStreaming?.a2uiMessages || [];
 
   useEffect(() => {
     resetSending();
@@ -96,6 +97,7 @@ export default function ChatPage() {
           isSending={isActiveSending}
           streamingContent={streamingContent}
           streamingReasoning={streamingReasoning}
+          streamingA2UIMessages={streamingA2UIMessages}
           error={error}
           selectedModel={selectedModel}
           onSend={handleSendMessage}

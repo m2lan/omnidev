@@ -4,6 +4,7 @@ import { api, type Conversation, type Message, type Attachment, type KnowledgeBa
 interface StreamingState {
   content: string;
   reasoning: string;
+  a2uiMessages: object[];
 }
 
 interface ImageGenerationState {
@@ -235,7 +236,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sendingConversationIds: new Set([...state.sendingConversationIds, conversationId]),
       streamingStates: {
         ...state.streamingStates,
-        [conversationId]: { content: "", reasoning: "" },
+        [conversationId]: { content: "", reasoning: "", a2uiMessages: [] },
       },
       error: null,
     }));
@@ -259,6 +260,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     let fullContent = "";
     let fullReasoning = "";
+    let fullA2UIMessages: object[] = [];
 
     await api.sendMessageStream(
       conversationId,
@@ -276,7 +278,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((state) => ({
           streamingStates: {
             ...state.streamingStates,
-            [conversationId]: { content: fullContent, reasoning: fullReasoning },
+            [conversationId]: { content: fullContent, reasoning: fullReasoning, a2uiMessages: fullA2UIMessages },
           },
         }));
       },
@@ -299,6 +301,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       // onComplete
       (assistantMsg: Message) => {
+        // Attach A2UI messages to the assistant message if any were received
+        if (fullA2UIMessages.length > 0) {
+          assistantMsg.content_type = "a2ui";
+          assistantMsg.a2ui_messages = fullA2UIMessages;
+        }
         set((state) => {
           const cached = state.messagesCache[conversationId] || [];
           const finalMessages = [...cached, assistantMsg];
@@ -342,7 +349,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       },
       // knowledgeBaseIds
-      knowledgeBaseIds
+      knowledgeBaseIds,
+      // onA2UIChunk
+      (messages: object[]) => {
+        fullA2UIMessages = [...fullA2UIMessages, ...messages];
+        set((state) => ({
+          streamingStates: {
+            ...state.streamingStates,
+            [conversationId]: {
+              content: fullContent,
+              reasoning: fullReasoning,
+              a2uiMessages: fullA2UIMessages,
+            },
+          },
+        }));
+      }
     );
   },
 

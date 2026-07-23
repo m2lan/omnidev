@@ -17,6 +17,7 @@ interface ChatAreaProps {
   isSending: boolean;
   streamingContent: string;
   streamingReasoning: string;
+  streamingA2UIMessages?: object[];
   error: string | null;
   selectedModel: string;
   onSend: (content: string, attachmentIds?: string[], attachments?: Attachment[], knowledgeBaseIds?: string[]) => Promise<void>;
@@ -47,6 +48,7 @@ export function ChatArea({
   isSending,
   streamingContent,
   streamingReasoning,
+  streamingA2UIMessages,
   error,
   selectedModel,
   onSend,
@@ -483,6 +485,21 @@ export function ChatArea({
                 conversation_id: "",
                 role: "assistant",
                 content: streamingContent,
+                created_at: new Date().toISOString(),
+              }}
+            />
+          )}
+
+          {/* Streaming A2UI messages */}
+          {isSending && streamingA2UIMessages && streamingA2UIMessages.length > 0 && (
+            <MessageBubble
+              message={{
+                id: "streaming-a2ui",
+                conversation_id: "",
+                role: "assistant",
+                content: "",
+                content_type: "a2ui",
+                a2ui_messages: streamingA2UIMessages,
                 created_at: new Date().toISOString(),
               }}
             />

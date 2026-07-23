@@ -330,8 +330,18 @@ func (h *ChatHandler) StreamMessage(c *gin.Context) {
 			msgData, _ := json.Marshal(completeMsg)
 			fmt.Fprintf(c.Writer, "event: complete\ndata: %s\n\n", msgData)
 			c.Writer.Flush()
+		} else if chunk.ContentType == "a2ui" && len(chunk.A2UIMessages) > 0 {
+			// A2UI messages — send as separate events
+			for _, a2uiMsg := range chunk.A2UIMessages {
+				a2uiData, _ := json.Marshal(a2uiMsg)
+				fmt.Fprintf(c.Writer, "event: a2ui\ndata: %s\n\n", a2uiData)
+				c.Writer.Flush()
+			}
 		} else if chunk.FinishReason != "stop" {
-			fullContent += chunk.Delta
+			// Only accumulate non-reasoning content
+			if chunk.Type != "reasoning" {
+				fullContent += chunk.Delta
+			}
 			data, _ := json.Marshal(chunk)
 			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
 			c.Writer.Flush()

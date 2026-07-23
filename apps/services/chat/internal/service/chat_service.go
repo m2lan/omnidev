@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/omnidev/go-common/a2ui"
 	"github.com/omnidev/go-common/cache"
 	appErr "github.com/omnidev/go-common/errors"
 	"github.com/omnidev/go-common/logger"
@@ -430,25 +431,84 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 		defer close(ch)
 
 		var fullContent string
+		var pending string     // text accumulated but not yet sent to client
+		processedBlocks := 0  // number of ```a2ui blocks already sent
 		start := time.Now()
+
+		// Flush pending text to client
+		flushPending := func(id string) {
+			if pending != "" {
+				ch <- domain.ChatChunk{ID: id, Delta: pending, ModelID: modelID}
+				pending = ""
+			}
+		}
 
 		for chunk := range stream {
 			fullContent += chunk.Delta
-			ch <- domain.ChatChunk{
-				ID:      chunk.ID,
-				Delta:   chunk.Delta,
-				ModelID: modelID,
+			pending += chunk.Delta
+
+			// 1. Check for complete ```a2ui blocks
+			extracted := a2ui.ExtractA2UIBlocks(fullContent)
+			if len(extracted.RawJSONs) > processedBlocks {
+				// Found complete block(s) — clear pending, send clean text + A2UI
+				pending = ""
+				if extracted.CleanText != "" {
+					ch <- domain.ChatChunk{ID: chunk.ID, Delta: extracted.CleanText, ModelID: modelID}
+				}
+				for i := processedBlocks; i < len(extracted.RawJSONs); i++ {
+					ch <- domain.ChatChunk{
+						ID:           chunk.ID,
+						ContentType:  "a2ui",
+						A2UIMessages: []interface{}{extracted.RawJSONs[i]},
+						ModelID:      modelID,
+					}
+				}
+				processedBlocks = len(extracted.RawJSONs)
+				continue
 			}
 
-			if chunk.Finish == "stop" {
-				latency := int(time.Since(start).Milliseconds())
+			// 2. Inside an open (incomplete) ```a2ui block — hold everything
+			if a2ui.HasOpenA2UIBlock(fullContent) {
+				continue
+			}
 
-				// Save complete assistant message
+			// 3. Pending text ends with a prefix of "```a2ui" — might be starting a block
+			//    Send everything EXCEPT the potential prefix
+			if a2ui.EndsLikeA2UIPrefix(pending) {
+				marker := "```a2ui"
+				// Find the longest matching prefix suffix
+				holdLen := 0
+				for i := 1; i <= len(marker) && i <= len(pending); i++ {
+					if pending[len(pending)-i:] == marker[:i] {
+						holdLen = i
+					}
+				}
+				// Send everything before the potential prefix
+				if len(pending) > holdLen {
+					toSend := pending[:len(pending)-holdLen]
+					ch <- domain.ChatChunk{ID: chunk.ID, Delta: toSend, ModelID: modelID}
+					pending = pending[len(pending)-holdLen:]
+				}
+				continue
+			}
+
+			// 4. Safe to send — flush all pending text
+			flushPending(chunk.ID)
+
+			// 5. Handle stream end
+			if chunk.Finish == "stop" {
+				flushPending(chunk.ID)
+
+				latency := int(time.Since(start).Milliseconds())
+				cleanContent := fullContent
+				if a2ui.IsA2UIBlock(fullContent) {
+					cleanContent = a2ui.ExtractA2UIBlocks(fullContent).CleanText
+				}
 				assistantMsg := &domain.Message{
 					ID:             uuid.New(),
 					ConversationID: convID,
 					Role:           domain.MessageRoleAssistant,
-					Content:        fullContent,
+					Content:        cleanContent,
 					LatencyMs:      &latency,
 					Metadata:       map[string]interface{}{"model": modelID, "streamed": true},
 				}
@@ -470,6 +530,24 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 // ListModels returns available AI models.
 func (s *ChatService) ListModels(ctx context.Context) ([]*domain.Model, error) {
 	return s.modelRepo.List(ctx, true)
+}
+
+// SendA2UIChunk sends an A2UI message chunk to the given stream channel.
+// This is a helper for business logic (tools, MCP, workflows) to inject A2UI messages.
+//
+// Usage:
+//
+//	ch := make(chan domain.ChatChunk, 100)
+//	chatSvc.SendA2UIChunk(ch, []interface{}{a2uiMessage})
+func SendA2UIChunk(ch chan<- domain.ChatChunk, id string, messages []interface{}) {
+	if len(messages) == 0 {
+		return
+	}
+	ch <- domain.ChatChunk{
+		ID:          id,
+		ContentType: "a2ui",
+		A2UIMessages: messages,
+	}
 }
 
 // emitUsageEvent publishes a usage event for billing.

@@ -115,11 +115,13 @@ type Usage struct {
 
 // ChatStreamChunk represents a streaming chunk.
 type ChatStreamChunk struct {
-	ID      string `json:"id"`
-	Delta   string `json:"delta"`
-	Model   string `json:"model"`
-	Finish  string `json:"finish,omitempty"`
-	Usage   *Usage `json:"usage,omitempty"`
+	ID          string        `json:"id"`
+	Delta       string        `json:"delta"`
+	Model       string        `json:"model"`
+	Finish      string        `json:"finish,omitempty"`
+	Usage       *Usage        `json:"usage,omitempty"`
+	ContentType string        `json:"content_type,omitempty"` // "text", "markdown", "a2ui"
+	A2UIMessages []interface{} `json:"a2ui_messages,omitempty"` // A2UI JSON messages
 }
 
 // Adapter defines the interface for AI model providers.
