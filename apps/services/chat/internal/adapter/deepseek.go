@@ -56,17 +56,7 @@ func (a *DeepSeekAdapter) Models() []string {
 }
 
 func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	body := map[string]interface{}{
-		"model":    req.Model,
-		"messages": req.Messages,
-		"stream":   false,
-	}
-	if req.Temperature != nil {
-		body["temperature"] = *req.Temperature
-	}
-	if req.MaxTokens != nil {
-		body["max_tokens"] = *req.MaxTokens
-	}
+	body := buildOpenAIRequestBody(req, false)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -107,9 +97,10 @@ func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 		content = result.Choices[0].Message.ReasoningContent
 	}
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   content,
+		Model:     result.Model,
+		ToolCalls: result.Choices[0].Message.ToolCalls,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
@@ -133,7 +124,7 @@ func (a *DeepSeekAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-c
 func (a *DeepSeekAdapter) CountTokens(model string, messages []Message) (int, error) {
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4
+		totalChars += len(GetTextContent(msg)) + len(msg.Role) + 4
 	}
 	return totalChars / 4, nil
 }

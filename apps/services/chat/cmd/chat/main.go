@@ -23,6 +23,7 @@ import (
 
 	"github.com/omnidev/services/chat/internal/adapter"
 	"github.com/omnidev/services/chat/internal/handler"
+	"github.com/omnidev/services/chat/internal/mcp"
 	"github.com/omnidev/services/chat/internal/repository"
 	"github.com/omnidev/services/chat/internal/service"
 )
@@ -103,9 +104,23 @@ func main() {
 	msgRepo := repository.NewMessageRepository(db.Pool)
 	modelRepo := repository.NewModelRepository(db.Pool)
 	promptRepo := repository.NewPromptRepository(db.Pool)
+	attRepo := repository.NewPostgresAttachmentRepository(db.Pool)
+
+	// External MCP tools
+	mcpManager := mcp.NewManager(cfg.MCP)
+	if cfg.MCP.Enabled {
+		startupCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		err := mcpManager.Start(startupCtx)
+		cancel()
+		if err != nil {
+			logger.Log.Warn("MCP tools unavailable", zap.Error(err))
+		} else {
+			logger.Log.Info("MCP tools loaded", zap.Int("count", len(mcpManager.Tools())))
+		}
+	}
 
 	// Services
-	chatSvc := service.NewChatService(convRepo, msgRepo, modelRepo, adapterRegistry, redisClient, cfg.AI.DefaultModel)
+	chatSvc := service.NewChatService(convRepo, msgRepo, modelRepo, attRepo, adapterRegistry, redisClient, cfg.AI.DefaultModel, mcpManager)
 	promptSvc := service.NewPromptService(promptRepo)
 
 	// Handlers

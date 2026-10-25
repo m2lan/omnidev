@@ -49,17 +49,7 @@ func (a *QwenAdapter) Models() []string {
 }
 
 func (a *QwenAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	body := map[string]interface{}{
-		"model":    req.Model,
-		"messages": req.Messages,
-		"stream":   false,
-	}
-	if req.Temperature != nil {
-		body["temperature"] = *req.Temperature
-	}
-	if req.MaxTokens != nil {
-		body["max_tokens"] = *req.MaxTokens
-	}
+	body := buildOpenAIRequestBody(req, false)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -95,9 +85,10 @@ func (a *QwenAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse
 	}
 
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: result.Choices[0].Message.Content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   result.Choices[0].Message.Content,
+		Model:     result.Model,
+		ToolCalls: result.Choices[0].Message.ToolCalls,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
@@ -119,7 +110,7 @@ func (a *QwenAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-chan 
 func (a *QwenAdapter) CountTokens(model string, messages []Message) (int, error) {
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4
+		totalChars += len(GetTextContent(msg)) + len(msg.Role) + 4
 	}
 	return totalChars / 4, nil
 }

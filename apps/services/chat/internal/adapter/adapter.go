@@ -98,12 +98,12 @@ type ToolCall struct {
 
 // ChatResponse represents a chat completion response.
 type ChatResponse struct {
-	ID      string   `json:"id"`
-	Content string   `json:"content"`
-	Model   string   `json:"model"`
-	Usage   Usage    `json:"usage"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	FinishReason string `json:"finish_reason"`
+	ID           string     `json:"id"`
+	Content      string     `json:"content"`
+	Model        string     `json:"model"`
+	Usage        Usage      `json:"usage"`
+	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
+	FinishReason string     `json:"finish_reason"`
 }
 
 // Usage represents token usage.
@@ -115,11 +115,12 @@ type Usage struct {
 
 // ChatStreamChunk represents a streaming chunk.
 type ChatStreamChunk struct {
-	ID      string `json:"id"`
-	Delta   string `json:"delta"`
-	Model   string `json:"model"`
-	Finish  string `json:"finish,omitempty"`
-	Usage   *Usage `json:"usage,omitempty"`
+	ID        string     `json:"id"`
+	Delta     string     `json:"delta"`
+	Model     string     `json:"model"`
+	Finish    string     `json:"finish,omitempty"`
+	Usage     *Usage     `json:"usage,omitempty"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // Adapter defines the interface for AI model providers.

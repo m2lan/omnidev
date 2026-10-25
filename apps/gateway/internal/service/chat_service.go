@@ -18,6 +18,7 @@ import (
 	"github.com/omnidev/go-common/logger"
 	"github.com/omnidev/go-common/parser"
 	"github.com/omnidev/go-common/storage"
+	kengine "github.com/omnidev/knowledge-engine"
 
 	"github.com/omnidev/gateway/internal/adapter"
 	"github.com/omnidev/gateway/internal/domain"
@@ -37,7 +38,7 @@ type ChatService struct {
 	userConfigRepo  repository.UserAIConfigRepository
 	cache           *cache.Redis
 	defaultModel    string
-	ragService      *RAGService
+	knowledgeSearch *kengine.SearchService
 }
 
 // NewChatService creates a new chat service.
@@ -70,8 +71,8 @@ func NewChatService(
 			svc.minioCli = v
 		case parser.Parser:
 			svc.parser = v
-		case *RAGService:
-			svc.ragService = v
+		case *kengine.SearchService:
+			svc.knowledgeSearch = v
 		}
 	}
 	return svc
@@ -139,7 +140,7 @@ func (s *ChatService) SendMessage(ctx context.Context, userID, convID uuid.UUID,
 	}
 
 	// Build adapter messages
-	adapterMsgs := s.buildAdapterMessages(ctx, conv, recentMsgs, input)
+	adapterMsgs := s.buildAdapterMessages(ctx, userID, conv, recentMsgs, input)
 
 	// Get adapter via resolver
 	aiAdapter, err := s.adapterResolver.Resolve(ctx, userID, modelID)
@@ -244,7 +245,7 @@ func (s *ChatService) StreamMessage(ctx context.Context, userID, convID uuid.UUI
 	}
 
 	// Build adapter messages
-	adapterMsgs := s.buildAdapterMessages(ctx, conv, recentMsgs, input)
+	adapterMsgs := s.buildAdapterMessages(ctx, userID, conv, recentMsgs, input)
 
 	// Get adapter via resolver
 	aiAdapter, err := s.adapterResolver.Resolve(ctx, userID, modelID)
@@ -408,15 +409,15 @@ func (s *ChatService) ListAvailableModelsForUser(ctx context.Context, userID uui
 }
 
 // buildAdapterMessages converts domain messages to adapter messages with multimodal support.
-func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Conversation, recentMsgs []*domain.Message, input *SendMessageInput) []adapter.Message {
+func (s *ChatService) buildAdapterMessages(ctx context.Context, userID uuid.UUID, conv *domain.Conversation, recentMsgs []*domain.Message, input *SendMessageInput) []adapter.Message {
 	adapterMsgs := make([]adapter.Message, 0, len(recentMsgs)+2)
 	if conv.SystemPrompt != nil && *conv.SystemPrompt != "" {
 		adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system", *conv.SystemPrompt))
 	}
 
-	// Inject RAG context if knowledge bases are referenced
-	if len(input.KnowledgeBaseIDs) > 0 && s.ragService != nil {
-		ragContext := s.retrieveRAGContext(ctx, input.Content, input.KnowledgeBaseIDs)
+	// Inject knowledge base context if the request references any
+	if len(input.KnowledgeBaseIDs) > 0 && s.knowledgeSearch != nil {
+		ragContext := s.retrieveRAGContext(ctx, userID, input.Content, input.KnowledgeBaseIDs)
 		if ragContext != "" {
 			adapterMsgs = append(adapterMsgs, adapter.NewTextMessage("system",
 				"The following context was retrieved from the user's knowledge bases. Use it to answer the user's question when relevant. Cite the source when using information from the knowledge base.\n\n"+ragContext))
@@ -503,22 +504,20 @@ func (s *ChatService) buildAdapterMessages(ctx context.Context, conv *domain.Con
 }
 
 // retrieveRAGContext searches knowledge bases and formats the results as context for the LLM.
-func (s *ChatService) retrieveRAGContext(ctx context.Context, query string, kbIDs []string) string {
-	if s.ragService == nil {
+func (s *ChatService) retrieveRAGContext(ctx context.Context, userID uuid.UUID, query string, kbIDs []string) string {
+	if s.knowledgeSearch == nil {
 		return ""
 	}
 
-	// Get the auth token from context (passed by handler)
-	token, _ := ctx.Value("auth_token").(string)
-	if token == "" {
-		return ""
-	}
-
-	var allResults []RAGSearchResult
-	for _, kbID := range kbIDs {
-		results, err := s.ragService.Search(ctx, token, kbID, query, 3)
+	var allResults []kengine.SearchResult
+	for _, idStr := range kbIDs {
+		kbID, err := uuid.Parse(idStr)
 		if err != nil {
-			logger.Log.Warn("RAG search failed for KB", zap.String("kb_id", kbID), zap.Error(err))
+			continue
+		}
+		results, err := s.knowledgeSearch.Search(ctx, userID, kbID, &kengine.SearchInput{Query: query, TopK: 3})
+		if err != nil {
+			logger.Log.Warn("Knowledge search failed for KB", zap.String("kb_id", idStr), zap.Error(err))
 			continue
 		}
 		allResults = append(allResults, results...)

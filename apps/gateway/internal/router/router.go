@@ -10,7 +10,7 @@ import (
 	"github.com/omnidev/go-common/middleware"
 
 	"github.com/omnidev/gateway/internal/handler"
-	raghandler "github.com/omnidev/gateway/internal/rag/handler"
+	knowledgehandler "github.com/omnidev/gateway/internal/knowledge"
 )
 
 // Setup configures all routes for the API Gateway.
@@ -22,8 +22,8 @@ func Setup(
 	chatHandler *handler.ChatHandler,
 	userAIConfigHandler *handler.UserAIConfigHandler,
 	uploadHandler *handler.UploadHandler,
-	ragKBHandler *raghandler.KnowledgeBaseHandler,
-	ragSearchHandler *raghandler.SearchHandler,
+	knowledgeKBHandler *knowledgehandler.KnowledgeBaseHandler,
+	knowledgeSearchHandler *knowledgehandler.SearchHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -93,18 +93,18 @@ func Setup(
 				aiConfigs.POST("/:id/test", userAIConfigHandler.TestConnection)
 			}
 
-			// Knowledge (RAG — embedded)
-			knowledge := protected.Group("/knowledge")
+			// Knowledge (embedded knowledge-engine)
+			knowledgeGroup := protected.Group("/knowledge")
 			{
-				knowledge.GET("", ragKBHandler.ListKnowledgeBases)
-				knowledge.POST("", ragKBHandler.CreateKnowledgeBase)
-				knowledge.GET("/:id", ragKBHandler.GetKnowledgeBase)
-				knowledge.PATCH("/:id", ragKBHandler.UpdateKnowledgeBase)
-				knowledge.DELETE("/:id", ragKBHandler.DeleteKnowledgeBase)
-				knowledge.GET("/:id/documents", ragKBHandler.ListDocuments)
-				knowledge.POST("/:id/documents", ragKBHandler.UploadDocument)
-				knowledge.DELETE("/:id/documents/:doc_id", ragKBHandler.DeleteDocument)
-				knowledge.POST("/:id/search", ragSearchHandler.Search)
+				knowledgeGroup.GET("", knowledgeKBHandler.ListKnowledgeBases)
+				knowledgeGroup.POST("", knowledgeKBHandler.CreateKnowledgeBase)
+				knowledgeGroup.GET("/:id", knowledgeKBHandler.GetKnowledgeBase)
+				knowledgeGroup.PATCH("/:id", knowledgeKBHandler.UpdateKnowledgeBase)
+				knowledgeGroup.DELETE("/:id", knowledgeKBHandler.DeleteKnowledgeBase)
+				knowledgeGroup.GET("/:id/documents", knowledgeKBHandler.ListDocuments)
+				knowledgeGroup.POST("/:id/documents", knowledgeKBHandler.UploadDocument)
+				knowledgeGroup.DELETE("/:id/documents/:doc_id", knowledgeKBHandler.DeleteDocument)
+				knowledgeGroup.POST("/:id/search", knowledgeSearchHandler.Search)
 			}
 		}
 

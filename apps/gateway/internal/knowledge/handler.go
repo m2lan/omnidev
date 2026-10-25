@@ -1,26 +1,27 @@
-// Package handler provides HTTP handlers for the RAG Service.
-package handler
+// Package knowledge exposes the embedded knowledge engine over the gateway's
+// HTTP API.
+package knowledge
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	appErr "github.com/omnidev/go-common/errors"
 	"github.com/omnidev/go-common/middleware"
-
-	"github.com/omnidev/gateway/internal/rag/service"
+	kengine "github.com/omnidev/knowledge-engine"
+	"github.com/omnidev/knowledge-engine/domain"
 )
 
 // KnowledgeBaseHandler handles knowledge base endpoints.
 type KnowledgeBaseHandler struct {
-	kbSvc *service.KnowledgeBaseService
+	kbSvc *kengine.KnowledgeBaseService
 }
 
 // NewKnowledgeBaseHandler creates a new knowledge base handler.
-func NewKnowledgeBaseHandler(kbSvc *service.KnowledgeBaseService) *KnowledgeBaseHandler {
+func NewKnowledgeBaseHandler(kbSvc *kengine.KnowledgeBaseService) *KnowledgeBaseHandler {
 	return &KnowledgeBaseHandler{kbSvc: kbSvc}
 }
 
@@ -57,7 +58,7 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBase(c *gin.Context) {
 		return
 	}
 
-	var input service.CreateKBInput
+	var input kengine.CreateKBInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		badRequest(c, err.Error())
 		return
@@ -111,7 +112,7 @@ func (h *KnowledgeBaseHandler) UpdateKnowledgeBase(c *gin.Context) {
 		return
 	}
 
-	var input service.CreateKBInput
+	var input kengine.CreateKBInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		badRequest(c, err.Error())
 		return
@@ -239,6 +240,51 @@ func (h *KnowledgeBaseHandler) DeleteDocument(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"message": "document deleted"}})
 }
 
+// SearchHandler handles search endpoints.
+type SearchHandler struct {
+	searchSvc *kengine.SearchService
+}
+
+// NewSearchHandler creates a new search handler.
+func NewSearchHandler(searchSvc *kengine.SearchService) *SearchHandler {
+	return &SearchHandler{searchSvc: searchSvc}
+}
+
+// Search performs a hybrid search on a knowledge base.
+// POST /api/v1/knowledge/:id/search
+func (h *SearchHandler) Search(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		unauthorized(c)
+		return
+	}
+
+	kbID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		badRequest(c, "invalid knowledge base ID")
+		return
+	}
+
+	var input kengine.SearchInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		badRequest(c, err.Error())
+		return
+	}
+
+	if input.Query == "" {
+		badRequest(c, "query is required")
+		return
+	}
+
+	results, err := h.searchSvc.Search(c.Request.Context(), userID, kbID, &input)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": results})
+}
+
 // --- Helper functions ---
 
 func unauthorized(c *gin.Context) {
@@ -250,9 +296,26 @@ func badRequest(c *gin.Context, detail string) {
 }
 
 func handleError(c *gin.Context, err error) {
-	if e, ok := err.(*appErr.AppError); ok {
-		c.JSON(e.Code, gin.H{"error": gin.H{"code": e.Code, "message": e.Message, "detail": e.Detail, "request_id": c.GetString("X-Request-ID")}})
-		return
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": gin.H{
+			"code": 404, "message": "not found", "detail": err.Error(),
+			"request_id": c.GetString("X-Request-ID"),
+		}})
+	case errors.Is(err, domain.ErrForbidden):
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{
+			"code": 403, "message": "forbidden", "detail": err.Error(),
+			"request_id": c.GetString("X-Request-ID"),
+		}})
+	case errors.Is(err, domain.ErrInvalidInput):
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{
+			"code": 400, "message": "bad request", "detail": err.Error(),
+			"request_id": c.GetString("X-Request-ID"),
+		}})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{
+			"code": 500, "message": "internal server error",
+			"request_id": c.GetString("X-Request-ID"),
+		}})
 	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": 500, "message": "internal server error", "request_id": c.GetString("X-Request-ID")}})
 }

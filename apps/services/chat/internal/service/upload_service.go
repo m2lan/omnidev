@@ -24,11 +24,11 @@ import (
 // UploadService handles file upload operations.
 type UploadService struct {
 	attRepo  repository.AttachmentRepository
-	minioCli *storage.MinIOClient
+	minioCli *storage.MinIO
 }
 
 // NewUploadService creates a new upload service.
-func NewUploadService(attRepo repository.AttachmentRepository, minioCli *storage.MinIOClient) *UploadService {
+func NewUploadService(attRepo repository.AttachmentRepository, minioCli *storage.MinIO) *UploadService {
 	return &UploadService{
 		attRepo:  attRepo,
 		minioCli: minioCli,
@@ -58,15 +58,15 @@ func DefaultUploadConfig() *UploadConfig {
 			"text/plain":    true,
 			"text/markdown": true,
 			// Code
-			"text/x-python":     true,
-			"text/javascript":   true,
+			"text/x-python":            true,
+			"text/javascript":          true,
 			"application/x-javascript": true,
-			"text/typescript":   true,
-			"text/x-go":         true,
-			"text/x-rust":       true,
-			"text/x-java":       true,
-			"text/x-c":          true,
-			"text/x-c++":        true,
+			"text/typescript":          true,
+			"text/x-go":                true,
+			"text/x-rust":              true,
+			"text/x-java":              true,
+			"text/x-c":                 true,
+			"text/x-c++":               true,
 		},
 	}
 }
@@ -103,7 +103,7 @@ func (s *UploadService) UploadFile(ctx context.Context, userID uuid.UUID, file *
 	storageKey := fmt.Sprintf("chat/%s/%s/%s/%s", userID.String(), dateStr, fileID.String(), cleanFilename)
 
 	// Upload to MinIO
-	if err := s.minioCli.Upload(ctx, storageKey, src, file.Size, mimeType); err != nil {
+	if _, err := s.minioCli.Upload(ctx, "chat", storageKey, src, file.Size, mimeType); err != nil {
 		return nil, fmt.Errorf("failed to upload file to storage: %w", err)
 	}
 
@@ -127,11 +127,11 @@ func (s *UploadService) UploadFile(ctx context.Context, userID uuid.UUID, file *
 	}
 
 	// Generate presigned URL (7 days expiry)
-	presignedURL, err := s.minioCli.PresignedGetObject(ctx, storageKey, 7*24*time.Hour)
+	presignedURL, err := s.minioCli.GetPresignedURL(ctx, "chat", storageKey, 7*24*time.Hour)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate file URL: %w", err)
 	}
-	att.StorageURL = presignedURL.String()
+	att.StorageURL = presignedURL
 
 	// Save to database
 	if err := s.attRepo.Create(ctx, att); err != nil {
@@ -154,9 +154,9 @@ func (s *UploadService) GetAttachment(ctx context.Context, userID uuid.UUID, att
 	}
 
 	// Refresh presigned URL
-	presignedURL, err := s.minioCli.PresignedGetObject(ctx, att.StorageKey, 7*24*time.Hour)
+	presignedURL, err := s.minioCli.GetPresignedURL(ctx, "chat", att.StorageKey, 7*24*time.Hour)
 	if err == nil {
-		att.StorageURL = presignedURL.String()
+		att.StorageURL = presignedURL
 	}
 
 	return att, nil
@@ -194,12 +194,12 @@ func (s *UploadService) GetPresignedURL(ctx context.Context, userID uuid.UUID, a
 		return "", fmt.Errorf("access denied")
 	}
 
-	presignedURL, err := s.minioCli.PresignedGetObject(ctx, att.StorageKey, 7*24*time.Hour)
+	presignedURL, err := s.minioCli.GetPresignedURL(ctx, "chat", att.StorageKey, 7*24*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned URL: %w", err)
 	}
 
-	return presignedURL.String(), nil
+	return presignedURL, nil
 }
 
 // --- Helper functions ---

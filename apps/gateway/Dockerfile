@@ -1,5 +1,9 @@
 # ==============================================================================
 # Build stage
+#
+# Build context is the repository root (the directory containing both
+# `omnidev/` and `knowledge-engine/`) so the gateway can import the shared
+# knowledge engine module.
 # ==============================================================================
 FROM golang:1.22-alpine AS builder
 
@@ -7,27 +11,28 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app
 
-# Copy go modules
-COPY go.work go.work.sum ./
-COPY packages/go-common/go.mod packages/go-common/go.sum ./packages/go-common/
-COPY apps/gateway/go.mod apps/gateway/go.sum ./apps/gateway/
+ENV GOWORK=off
 
-# Download dependencies
-RUN go mod download
+# Copy module files first for better layer caching
+COPY omnidev/packages/go-common/go.mod ./omnidev/packages/go-common/
+COPY knowledge-engine/go.mod knowledge-engine/go.sum ./knowledge-engine/
+COPY omnidev/apps/gateway/go.mod omnidev/apps/gateway/go.sum ./omnidev/apps/gateway/
+
+RUN cd omnidev/apps/gateway && go mod download
 
 # Copy source code
-COPY packages/go-common/ ./packages/go-common/
-COPY apps/gateway/ ./apps/gateway/
+COPY omnidev/packages/go-common/ ./omnidev/packages/go-common/
+COPY knowledge-engine/ ./knowledge-engine/
+COPY omnidev/apps/gateway/ ./omnidev/apps/gateway/
 
 # Build
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN cd omnidev/apps/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME} -s -w" \
-    -o /app/gateway \
-    ./apps/gateway/cmd/gateway/main.go
+    -o /app/gateway ./cmd/gateway
 
 # ==============================================================================
 # Runtime stage

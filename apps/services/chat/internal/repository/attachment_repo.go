@@ -3,11 +3,11 @@ package repository
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 
-	"github.com/jmoiron/sqlx"
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/omnidev/services/chat/internal/domain"
 )
@@ -24,12 +24,28 @@ type AttachmentRepository interface {
 
 // PostgresAttachmentRepository implements AttachmentRepository with PostgreSQL.
 type PostgresAttachmentRepository struct {
-	db *sqlx.DB
+	pool *pgxpool.Pool
 }
 
 // NewPostgresAttachmentRepository creates a new PostgreSQL attachment repository.
-func NewPostgresAttachmentRepository(db *sqlx.DB) *PostgresAttachmentRepository {
-	return &PostgresAttachmentRepository{db: db}
+func NewPostgresAttachmentRepository(pool *pgxpool.Pool) *PostgresAttachmentRepository {
+	return &PostgresAttachmentRepository{pool: pool}
+}
+
+const attachmentColumns = `id, user_id, conversation_id, message_id, filename, mime_type,
+	file_size, storage_key, storage_url, thumbnail_key, width, height, metadata, created_at`
+
+func scanAttachment(row pgx.Row) (*domain.Attachment, error) {
+	var att domain.Attachment
+	err := row.Scan(
+		&att.ID, &att.UserID, &att.ConversationID, &att.MessageID, &att.Filename, &att.MimeType,
+		&att.FileSize, &att.StorageKey, &att.StorageURL, &att.ThumbnailKey, &att.Width, &att.Height,
+		&att.Metadata, &att.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &att, nil
 }
 
 // Create inserts a new attachment record.
@@ -39,15 +55,15 @@ func (r *PostgresAttachmentRepository) Create(ctx context.Context, att *domain.A
 			id, user_id, conversation_id, message_id, filename, mime_type,
 			file_size, storage_key, storage_url, thumbnail_key, width, height, metadata
 		) VALUES (
-			:id, :user_id, :conversation_id, :message_id, :filename, :mime_type,
-			:file_size, :storage_key, :storage_url, :thumbnail_key, :width, :height, :metadata
-		)`
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+		) RETURNING created_at`
 
-	_, err := r.db.NamedExecContext(ctx, query, att)
+	err := r.pool.QueryRow(ctx, query,
+		att.ID, att.UserID, att.ConversationID, att.MessageID, att.Filename, att.MimeType,
+		att.FileSize, att.StorageKey, att.StorageURL, att.ThumbnailKey, att.Width, att.Height,
+		att.Metadata,
+	).Scan(&att.CreatedAt)
 	if err != nil {
-		if pqErr, ok := err.(*pq.Error); ok {
-			return fmt.Errorf("database error (code %s): %w", pqErr.Code, pqErr)
-		}
 		return fmt.Errorf("failed to create attachment: %w", err)
 	}
 	return nil
@@ -55,33 +71,40 @@ func (r *PostgresAttachmentRepository) Create(ctx context.Context, att *domain.A
 
 // GetByID returns an attachment by ID.
 func (r *PostgresAttachmentRepository) GetByID(ctx context.Context, id string) (*domain.Attachment, error) {
-	var att domain.Attachment
-	query := `
-		SELECT id, user_id, conversation_id, message_id, filename, mime_type,
-			file_size, storage_key, storage_url, thumbnail_key, width, height, metadata, created_at
-		FROM attachments
-		WHERE id = $1 AND deleted_at IS NULL`
+	query := fmt.Sprintf(`SELECT %s FROM attachments WHERE id = $1 AND deleted_at IS NULL`, attachmentColumns)
 
-	if err := r.db.GetContext(ctx, &att, query, id); err != nil {
-		if err == sql.ErrNoRows {
+	att, err := scanAttachment(r.pool.QueryRow(ctx, query, id))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("attachment not found: %s", id)
 		}
 		return nil, fmt.Errorf("failed to get attachment: %w", err)
 	}
-	return &att, nil
+	return att, nil
 }
 
 // ListByMessage returns all attachments for a message.
 func (r *PostgresAttachmentRepository) ListByMessage(ctx context.Context, messageID string) ([]*domain.Attachment, error) {
-	var attachments []*domain.Attachment
-	query := `
-		SELECT id, user_id, conversation_id, message_id, filename, mime_type,
-			file_size, storage_key, storage_url, thumbnail_key, width, height, metadata, created_at
-		FROM attachments
+	query := fmt.Sprintf(`
+		SELECT %s FROM attachments
 		WHERE message_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at ASC`
+		ORDER BY created_at ASC`, attachmentColumns)
 
-	if err := r.db.SelectContext(ctx, &attachments, query, messageID); err != nil {
+	rows, err := r.pool.Query(ctx, query, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list attachments by message: %w", err)
+	}
+	defer rows.Close()
+
+	attachments := make([]*domain.Attachment, 0)
+	for rows.Next() {
+		att, err := scanAttachment(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+		attachments = append(attachments, att)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to list attachments by message: %w", err)
 	}
 	return attachments, nil
@@ -89,15 +112,26 @@ func (r *PostgresAttachmentRepository) ListByMessage(ctx context.Context, messag
 
 // ListByConversation returns all attachments for a conversation.
 func (r *PostgresAttachmentRepository) ListByConversation(ctx context.Context, conversationID string) ([]*domain.Attachment, error) {
-	var attachments []*domain.Attachment
-	query := `
-		SELECT id, user_id, conversation_id, message_id, filename, mime_type,
-			file_size, storage_key, storage_url, thumbnail_key, width, height, metadata, created_at
-		FROM attachments
+	query := fmt.Sprintf(`
+		SELECT %s FROM attachments
 		WHERE conversation_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC`
+		ORDER BY created_at DESC`, attachmentColumns)
 
-	if err := r.db.SelectContext(ctx, &attachments, query, conversationID); err != nil {
+	rows, err := r.pool.Query(ctx, query, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list attachments by conversation: %w", err)
+	}
+	defer rows.Close()
+
+	attachments := make([]*domain.Attachment, 0)
+	for rows.Next() {
+		att, err := scanAttachment(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan attachment: %w", err)
+		}
+		attachments = append(attachments, att)
+	}
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to list attachments by conversation: %w", err)
 	}
 	return attachments, nil
@@ -111,11 +145,10 @@ func (r *PostgresAttachmentRepository) UpdateMessageID(ctx context.Context, ids 
 
 	query := `
 		UPDATE attachments
-		SET message_id = $1, updated_at = NOW()
-		WHERE id = ANY($2) AND deleted_at IS NULL`
+		SET message_id = $1
+		WHERE id::text = ANY($2) AND deleted_at IS NULL`
 
-	_, err := r.db.ExecContext(ctx, query, messageID, pq.Array(ids))
-	if err != nil {
+	if _, err := r.pool.Exec(ctx, query, messageID, ids); err != nil {
 		return fmt.Errorf("failed to update attachment message_id: %w", err)
 	}
 	return nil
@@ -125,13 +158,11 @@ func (r *PostgresAttachmentRepository) UpdateMessageID(ctx context.Context, ids 
 func (r *PostgresAttachmentRepository) Delete(ctx context.Context, id string) error {
 	query := `UPDATE attachments SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
 
-	result, err := r.db.ExecContext(ctx, query, id)
+	tag, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete attachment: %w", err)
 	}
-
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
+	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("attachment not found: %s", id)
 	}
 	return nil

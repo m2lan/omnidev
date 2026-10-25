@@ -8,41 +8,43 @@ import (
 
 // Config is the root application configuration.
 type Config struct {
-	App        AppConfig        `mapstructure:"app"`
-	Database   DatabaseConfig   `mapstructure:"db"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	Kafka      KafkaConfig      `mapstructure:"kafka"`
-	MinIO      MinIOConfig      `mapstructure:"minio"`
-	ES         ESConfig         `mapstructure:"es"`
-	Temporal   TemporalConfig   `mapstructure:"temporal"`
-	JWT        JWTConfig        `mapstructure:"jwt"`
-	OAuth      OAuthConfig      `mapstructure:"oauth"`
-	AI         AIConfig         `mapstructure:"ai"`
-	Security   SecurityConfig   `mapstructure:"security"`
-	Sandbox    SandboxConfig    `mapstructure:"sandbox"`
-	Telemetry  TelemetryConfig  `mapstructure:"telemetry"`
-	Tika       TikaConfig       `mapstructure:"tika"`
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"db"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	Kafka     KafkaConfig     `mapstructure:"kafka"`
+	MinIO     MinIOConfig     `mapstructure:"minio"`
+	ES        ESConfig        `mapstructure:"es"`
+	Temporal  TemporalConfig  `mapstructure:"temporal"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	OAuth     OAuthConfig     `mapstructure:"oauth"`
+	AI        AIConfig        `mapstructure:"ai"`
+	Security  SecurityConfig  `mapstructure:"security"`
+	Sandbox   SandboxConfig   `mapstructure:"sandbox"`
+	Telemetry TelemetryConfig `mapstructure:"telemetry"`
+	Tika      TikaConfig      `mapstructure:"tika"`
+	Knowledge KnowledgeConfig `mapstructure:"knowledge"`
+	MCP       MCPConfig       `mapstructure:"mcp"`
 }
 
 // AppConfig holds general application settings.
 type AppConfig struct {
-	Name    string `mapstructure:"name"`
-	Env     string `mapstructure:"env"`     // development, staging, production
-	Debug   bool   `mapstructure:"debug"`
-	Port    int    `mapstructure:"port"`
+	Name     string `mapstructure:"name"`
+	Env      string `mapstructure:"env"` // development, staging, production
+	Debug    bool   `mapstructure:"debug"`
+	Port     int    `mapstructure:"port"`
 	LogLevel string `mapstructure:"log_level"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
 type DatabaseConfig struct {
-	Host           string        `mapstructure:"host"`
-	Port           int           `mapstructure:"port"`
-	User           string        `mapstructure:"user"`
-	Password       string        `mapstructure:"password"`
-	Name           string        `mapstructure:"name"`
-	SSLMode        string        `mapstructure:"sslmode"`
-	MaxOpenConns   int           `mapstructure:"max_open_conns"`
-	MaxIdleConns   int           `mapstructure:"max_idle_conns"`
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	User            string        `mapstructure:"user"`
+	Password        string        `mapstructure:"password"`
+	Name            string        `mapstructure:"name"`
+	SSLMode         string        `mapstructure:"sslmode"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
@@ -78,10 +80,10 @@ type KafkaConfig struct {
 
 // MinIOConfig holds MinIO connection settings.
 type MinIOConfig struct {
-	Endpoint   string `mapstructure:"endpoint"`
-	AccessKey  string `mapstructure:"access_key"`
-	SecretKey  string `mapstructure:"secret_key"`
-	UseSSL     bool   `mapstructure:"use_ssl"`
+	Endpoint     string `mapstructure:"endpoint"`
+	AccessKey    string `mapstructure:"access_key"`
+	SecretKey    string `mapstructure:"secret_key"`
+	UseSSL       bool   `mapstructure:"use_ssl"`
 	BucketPrefix string `mapstructure:"bucket_prefix"`
 }
 
@@ -121,17 +123,17 @@ type OAuthProvider struct {
 
 // AIConfig holds AI provider settings.
 type AIConfig struct {
-	DefaultModel      string             `mapstructure:"default_model"`
-	EmbeddingProvider string             `mapstructure:"embedding_provider"` // openai, gemini, voyage, cohere, ollama, etc.
-	EmbeddingModel    string             `mapstructure:"embedding_model"`
-	EmbeddingAPIKey   string             `mapstructure:"embedding_api_key"`  // override per-embedding provider key
-	EmbeddingBaseURL  string             `mapstructure:"embedding_base_url"` // for self-hosted / Ollama / vLLM
-	OpenAI            AIProviderConfig   `mapstructure:"openai"`
-	Anthropic         AIProviderConfig   `mapstructure:"anthropic"`
-	Google            AIProviderConfig   `mapstructure:"google"`
-	DeepSeek          AIProviderConfig   `mapstructure:"deepseek"`
-	Qwen              AIProviderConfig   `mapstructure:"qwen"`
-	Ollama            AIProviderConfig   `mapstructure:"ollama"`
+	DefaultModel      string           `mapstructure:"default_model"`
+	EmbeddingProvider string           `mapstructure:"embedding_provider"` // openai, gemini, voyage, cohere, ollama, etc.
+	EmbeddingModel    string           `mapstructure:"embedding_model"`
+	EmbeddingAPIKey   string           `mapstructure:"embedding_api_key"`  // override per-embedding provider key
+	EmbeddingBaseURL  string           `mapstructure:"embedding_base_url"` // for self-hosted / Ollama / vLLM
+	OpenAI            AIProviderConfig `mapstructure:"openai"`
+	Anthropic         AIProviderConfig `mapstructure:"anthropic"`
+	Google            AIProviderConfig `mapstructure:"google"`
+	DeepSeek          AIProviderConfig `mapstructure:"deepseek"`
+	Qwen              AIProviderConfig `mapstructure:"qwen"`
+	Ollama            AIProviderConfig `mapstructure:"ollama"`
 }
 
 // AIProviderConfig holds settings for a single AI provider.
@@ -148,9 +150,9 @@ type SecurityConfig struct {
 
 // SandboxConfig holds sandbox execution settings.
 type SandboxConfig struct {
-	RuntimeImage string `mapstructure:"runtime_image"`
-	CPULimit     string `mapstructure:"cpu_limit"`
-	MemoryLimit  string `mapstructure:"memory_limit"`
+	RuntimeImage string        `mapstructure:"runtime_image"`
+	CPULimit     string        `mapstructure:"cpu_limit"`
+	MemoryLimit  string        `mapstructure:"memory_limit"`
 	Timeout      time.Duration `mapstructure:"timeout"`
 }
 
@@ -163,4 +165,29 @@ type TelemetryConfig struct {
 type TikaConfig struct {
 	Endpoint string `mapstructure:"endpoint"` // e.g., http://localhost:9998
 	Timeout  int    `mapstructure:"timeout"`  // Request timeout in seconds
+}
+
+// KnowledgeConfig holds settings for the embedded knowledge engine.
+type KnowledgeConfig struct {
+	StorageType         string        `mapstructure:"storage_type"` // minio or local
+	Bucket              string        `mapstructure:"bucket"`
+	LocalPath           string        `mapstructure:"local_path"`
+	ParserType          string        `mapstructure:"parser_type"` // tika or native
+	CacheTTL            time.Duration `mapstructure:"cache_ttl"`
+	EmbeddingDimensions int           `mapstructure:"embedding_dimensions"`
+}
+
+// MCPConfig holds configuration for external MCP servers used by the chat service.
+type MCPConfig struct {
+	Enabled bool              `mapstructure:"enabled"`
+	Servers []MCPServerConfig `mapstructure:"servers"`
+}
+
+// MCPServerConfig describes one remote MCP server.
+type MCPServerConfig struct {
+	Name           string            `mapstructure:"name" json:"name"`
+	URL            string            `mapstructure:"url" json:"url"`
+	APIKey         string            `mapstructure:"api_key" json:"api_key"`
+	TimeoutSeconds int               `mapstructure:"timeout_seconds" json:"timeout_seconds"`
+	Headers        map[string]string `mapstructure:"headers" json:"headers"`
 }

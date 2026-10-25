@@ -57,14 +57,7 @@ func (a *OllamaAdapter) Models() []string {
 }
 
 func (a *OllamaAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	body := map[string]interface{}{
-		"model":    req.Model,
-		"messages": req.Messages,
-		"stream":   false,
-	}
-	if req.Temperature != nil {
-		body["temperature"] = *req.Temperature
-	}
+	body := buildOllamaRequestBody(req, false)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -94,25 +87,28 @@ func (a *OllamaAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	toolCalls := toToolCalls(result.Message.ToolCalls)
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+
 	return &ChatResponse{
-		ID:      fmt.Sprintf("ollama-%d", time.Now().UnixNano()),
-		Content: result.Message.Content,
-		Model:   result.Model,
+		ID:        fmt.Sprintf("ollama-%d", time.Now().UnixNano()),
+		Content:   result.Message.Content,
+		Model:     result.Model,
+		ToolCalls: toolCalls,
 		Usage: Usage{
 			PromptTokens:     result.PromptEvalCount,
 			CompletionTokens: result.EvalCount,
 			TotalTokens:      result.PromptEvalCount + result.EvalCount,
 		},
-		FinishReason: "stop",
+		FinishReason: finishReason,
 	}, nil
 }
 
 func (a *OllamaAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-chan ChatStreamChunk, error) {
-	body := map[string]interface{}{
-		"model":    req.Model,
-		"messages": req.Messages,
-		"stream":   true,
-	}
+	body := buildOllamaRequestBody(req, true)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -153,13 +149,20 @@ func (a *OllamaAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 				return
 			}
 
-			ch <- ChatStreamChunk{
-				Delta:  chunk.Message.Content,
-				Model:  chunk.Model,
-				Finish: boolToFinish(chunk.Done),
+			if chunk.Message.Content != "" {
+				ch <- ChatStreamChunk{
+					Delta: chunk.Message.Content,
+					Model: chunk.Model,
+				}
 			}
 
 			if chunk.Done {
+				calls := toToolCalls(chunk.Message.ToolCalls)
+				if len(calls) > 0 {
+					ch <- ChatStreamChunk{Model: chunk.Model, Finish: "tool_calls", ToolCalls: calls}
+				} else {
+					ch <- ChatStreamChunk{Model: chunk.Model, Finish: "stop"}
+				}
 				return
 			}
 		}
@@ -171,36 +174,116 @@ func (a *OllamaAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 func (a *OllamaAdapter) CountTokens(model string, messages []Message) (int, error) {
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4
+		totalChars += len(GetTextContent(msg)) + len(msg.Role) + 4
 	}
 	return totalChars / 4, nil
 }
 
-func boolToFinish(done bool) string {
-	if done {
-		return "stop"
+func buildOllamaRequestBody(req *ChatRequest, stream bool) map[string]interface{} {
+	body := map[string]interface{}{
+		"model":    req.Model,
+		"messages": buildOllamaMessages(req.Messages),
+		"stream":   stream,
 	}
-	return ""
+	if req.Temperature != nil {
+		body["temperature"] = *req.Temperature
+	}
+	if len(req.Tools) > 0 {
+		tools := make([]map[string]interface{}, 0, len(req.Tools))
+		for _, tool := range req.Tools {
+			tools = append(tools, map[string]interface{}{
+				"type": "function",
+				"function": map[string]interface{}{
+					"name":        tool.Function.Name,
+					"description": tool.Function.Description,
+					"parameters":  tool.Function.Parameters,
+				},
+			})
+		}
+		body["tools"] = tools
+	}
+	return body
+}
+
+func buildOllamaMessages(messages []Message) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(messages))
+	for _, msg := range messages {
+		m := map[string]interface{}{
+			"role":    msg.Role,
+			"content": msg.Content,
+		}
+		if len(msg.ToolCalls) > 0 {
+			calls := make([]map[string]interface{}, 0, len(msg.ToolCalls))
+			for _, tc := range msg.ToolCalls {
+				args := interface{}(map[string]interface{}{})
+				if json.Valid([]byte(tc.Function.Arguments)) && tc.Function.Arguments != "" {
+					_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+				}
+				calls = append(calls, map[string]interface{}{
+					"function": map[string]interface{}{
+						"name":      tc.Function.Name,
+						"arguments": args,
+					},
+				})
+			}
+			m["tool_calls"] = calls
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func toToolCalls(raw []ollamaToolCall) []ToolCall {
+	if len(raw) == 0 {
+		return nil
+	}
+	calls := make([]ToolCall, 0, len(raw))
+	for i, tc := range raw {
+		args := "{}"
+		if len(tc.Function.Arguments) > 0 && string(tc.Function.Arguments) != "null" {
+			args = string(tc.Function.Arguments)
+		}
+		id := tc.ID
+		if id == "" {
+			id = fmt.Sprintf("ollama_call_%d_%d", time.Now().UnixNano(), i)
+		}
+		out := ToolCall{ID: id, Type: "function"}
+		out.Function.Name = tc.Function.Name
+		out.Function.Arguments = args
+		calls = append(calls, out)
+	}
+	return calls
 }
 
 // Ollama API response types
 
 type ollamaResponse struct {
-	Model              string `json:"model"`
-	Message            struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+	Model   string `json:"model"`
+	Message struct {
+		Role      string           `json:"role"`
+		Content   string           `json:"content"`
+		ToolCalls []ollamaToolCall `json:"tool_calls"`
 	} `json:"message"`
-	Done               bool `json:"done"`
-	PromptEvalCount    int  `json:"prompt_eval_count"`
-	EvalCount          int  `json:"eval_count"`
+	Done            bool `json:"done"`
+	PromptEvalCount int  `json:"prompt_eval_count"`
+	EvalCount       int  `json:"eval_count"`
 }
 
 type ollamaStreamChunk struct {
 	Model   string `json:"model"`
 	Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+		Role      string           `json:"role"`
+		Content   string           `json:"content"`
+		ToolCalls []ollamaToolCall `json:"tool_calls"`
 	} `json:"message"`
 	Done bool `json:"done"`
+}
+
+type ollamaToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	} `json:"function"`
 }

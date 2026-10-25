@@ -62,7 +62,7 @@ func (a *OpenAIAdapter) Models() []string {
 }
 
 func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
-	body := a.buildRequest(req, false)
+	body := buildOpenAIRequestBody(req, false)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -104,9 +104,10 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 		content = choice.Message.ReasoningContent
 	}
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   content,
+		Model:     result.Model,
+		ToolCalls: choice.Message.ToolCalls,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
@@ -117,7 +118,7 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 }
 
 func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-chan ChatStreamChunk, error) {
-	body := a.buildRequest(req, true)
+	body := buildOpenAIRequestBody(req, true)
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -150,6 +151,23 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 		defer close(ch)
 		defer resp.Body.Close()
 
+		var toolCalls []ToolCall
+		toolCallIndex := map[int]int{}
+
+		emitToolCalls := func(id, model string) {
+			for i := range toolCalls {
+				if toolCalls[i].Type == "" {
+					toolCalls[i].Type = "function"
+				}
+				if toolCalls[i].ID == "" {
+					toolCalls[i].ID = fmt.Sprintf("call_%d_%d", time.Now().UnixNano(), i)
+				}
+			}
+			ch <- ChatStreamChunk{ID: id, Model: model, Finish: "tool_calls", ToolCalls: toolCalls}
+			toolCalls = nil
+			toolCallIndex = map[int]int{}
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -160,6 +178,9 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 
 			data := strings.TrimPrefix(line, "data: ")
 			if data == "[DONE]" {
+				if len(toolCalls) > 0 {
+					emitToolCalls("", "")
+				}
 				return
 			}
 
@@ -169,20 +190,52 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 				continue
 			}
 
-			if len(chunk.Choices) > 0 {
-				delta := chunk.Choices[0].Delta
-				// Use content if available, fallback to reasoning_content (mimo)
-				content := delta.Content
-				if content == "" {
-					content = delta.ReasoningContent
+			if len(chunk.Choices) == 0 {
+				continue
+			}
+
+			delta := chunk.Choices[0].Delta
+			for _, tc := range delta.ToolCalls {
+				pos, ok := toolCallIndex[tc.Index]
+				if !ok {
+					pos = len(toolCalls)
+					toolCallIndex[tc.Index] = pos
+					toolCalls = append(toolCalls, ToolCall{Type: "function"})
 				}
+				if tc.ID != "" {
+					toolCalls[pos].ID = tc.ID
+				}
+				if tc.Type != "" {
+					toolCalls[pos].Type = tc.Type
+				}
+				toolCalls[pos].Function.Name += tc.Function.Name
+				toolCalls[pos].Function.Arguments += tc.Function.Arguments
+			}
+
+			// Use content if available, fallback to reasoning_content (mimo)
+			content := delta.Content
+			if content == "" {
+				content = delta.ReasoningContent
+			}
+			if content != "" {
 				ch <- ChatStreamChunk{
-					ID:     chunk.ID,
-					Delta:  content,
-					Model:  chunk.Model,
-					Finish: chunk.Choices[0].FinishReason,
+					ID:    chunk.ID,
+					Delta: content,
+					Model: chunk.Model,
 				}
 			}
+
+			if finish := chunk.Choices[0].FinishReason; finish != "" {
+				if len(toolCalls) > 0 {
+					emitToolCalls(chunk.ID, chunk.Model)
+				} else {
+					ch <- ChatStreamChunk{ID: chunk.ID, Model: chunk.Model, Finish: finish}
+				}
+			}
+		}
+
+		if len(toolCalls) > 0 {
+			emitToolCalls("", "")
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -197,12 +250,12 @@ func (a *OpenAIAdapter) CountTokens(model string, messages []Message) (int, erro
 	// Rough estimation: ~4 chars per token
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content) + len(msg.Role) + 4 // overhead
+		totalChars += len(GetTextContent(msg)) + len(msg.Role) + 4 // overhead
 	}
 	return totalChars / 4, nil
 }
 
-func (a *OpenAIAdapter) buildRequest(req *ChatRequest, stream bool) map[string]interface{} {
+func buildOpenAIRequestBody(req *ChatRequest, stream bool) map[string]interface{} {
 	messages := make([]map[string]interface{}, 0, len(req.Messages))
 	for _, msg := range req.Messages {
 		m := map[string]interface{}{
@@ -287,9 +340,20 @@ type openaiStreamChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
+			Content          string                `json:"content"`
+			ReasoningContent string                `json:"reasoning_content"`
+			ToolCalls        []openaiToolCallDelta `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+}
+
+type openaiToolCallDelta struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
