@@ -290,8 +290,10 @@ curl http://localhost:9998/version
 
 | 文件 | 说明 |
 |------|------|
-| `apps/services/chat/migrations/002_create_attachments.up.sql` | 建表脚本 |
-| `apps/services/chat/migrations/002_create_attachments.down.sql` | 回滚脚本 |
+| `apps/gateway/migrations/007_create_attachments.up.sql` | 建表脚本 |
+| `apps/gateway/migrations/007_create_attachments.down.sql` | 建表回滚脚本 |
+| `apps/gateway/migrations/008_expand_attachment_urls.up.sql` | 扩展附件 URL 与存储键长度 |
+| `apps/gateway/migrations/008_expand_attachment_urls.down.sql` | URL 字段变更回滚脚本 |
 
 ### 基础设施
 

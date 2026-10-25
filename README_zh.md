@@ -1,294 +1,183 @@
-<p align="center">
-  <img src="docs/assets/omnidev-logo.svg" alt="OmniDev AI Platform" width="120" height="120">
-</p>
-
-<h1 align="center">OmniDev AI Platform</h1>
+<h1 align="center">OmniDev</h1>
 
 <p align="center">
-  <strong>一站式 AI 开发平台</strong>
+  <strong>面向团队的 AI 知识与编码工作台</strong>
 </p>
 
 <p align="center">
-  打开浏览器，用 AI 写代码、管项目、部署上线，一个平台全搞定。
+  多模型 Chat、可检索的知识库、在 Docker 沙箱里跑代码的后台 Agent —— 一个 Go 二进制 + 一个 Next.js 应用。
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="#-快速开始">快速开始</a> · <a href="#-系统架构">系统架构</a> · <a href="docs/architecture/">文档</a>
+  <a href="README.md">English</a> · <a href="#快速开始">快速开始</a> · <a href="#架构">架构</a> · <a href="docs/architecture/">文档</a>
 </p>
 
 ---
 
-## 项目简介
+## OmniDev 是什么？
 
-OmniDev AI Platform 是一个 **All-in-One AI 开发平台**，将 AI 编程助手、在线 IDE、Agent 编排、RAG 知识库、CI/CD 部署、监控运维融合为统一产品。
+OmniDev 是一个可私有部署的工作台，目前聚焦三件已经能真实使用的事：
 
-**一句话定位：** 打开浏览器，就能用 AI 写代码、管项目、部署上线。
+- **Chat** —— 多模型对话（OpenAI、DeepSeek、Qwen、Anthropic），支持流式输出、文件附件、图片输入与生成、用户自带的模型 Key（BYOK），以及在对话中调用外部 MCP 工具。
+- **知识库** —— 上传文档、分块、向量化，用 pgvector 检索，并把结果作为带引用的上下文注入对话。由内置的 [knowledge-engine](../knowledge-engine) 模块提供；该模块也能独立部署为 HTTP API 和 MCP server。
+- **后台 Agent** —— 用自然语言描述任务，Agent 异步规划并执行，可读写运行工作区、搜索、计算、在隔离的 Docker 容器里执行代码。运行记录落库，可轮询进度、可取消。
 
-## 核心功能
+后端是**模块化单体**：`apps/gateway` 一个进程承载认证、用户、Chat、知识库、Agent，不需要编排任何微服务。
 
-### 在线 IDE
+### 明确不做 / 已下线
 
-| 功能 | 说明 |
-|------|------|
-| Monaco Editor | 语法高亮、多光标、Minimap、文件搜索与替换 |
-| AI 代码补全 | Tab 补全、多行建议、上下文感知（通过 LSP 协议对接 Chat Engine） |
-| Agent 代码修改 | AI Agent 直接修改代码，支持 Diff 预览、接受/拒绝/撤销 |
-| 终端模拟 | xterm.js、多 Tab、SSH、PTY 支持 |
-| Git 操作 | commit/push/pull/branch/merge、可视化 Diff |
-| Code Review | 行内评论、AI 辅助审查、建议修改 |
+以下能力因为此前是演示桩、可以被集成替代、或运维成本过高而移除：在线 IDE（Monaco + 假终端）、可视化拖拽工作流画布、自建支付与订阅、Prometheus/Grafana/Loki/Jaeger 监控全家桶、一键部署、通知微服务，以及 Kafka、Elasticsearch、Temporal 和 16 微服务拆分。**Agent 自动提交 PR 尚未实现。**
 
-### Agent 系统
+## 功能现状
 
-| 功能 | 说明 |
-|------|------|
-| 自然语言任务执行 | 用户用自然语言描述任务，Agent 自动分解、规划、执行 |
-| Tool Calling | 内置工具 + 自定义 MCP 工具，支持 Function Calling |
-| 可视化编排 | 拖拽画布、节点连线、条件分支 |
-| 沙箱代码执行 | Docker 隔离、资源限制、文件系统挂载 |
-| 执行监控 | 实时日志、步骤追踪、中间状态查看 |
-| Agent 模板 | 预置模板：代码审查、测试生成、文档生成等 |
-| 多 Agent 协作 | CrewAI 模式、角色分配、任务委派 |
-| Agent 市场 | 配置导出、评分、安装统计 |
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 认证（JWT、刷新令牌、API Key、OAuth 接入点） | 可用 | 所有资源按用户隔离 |
+| Chat（流式 / 非流式） | 可用 | OpenAI / DeepSeek / Qwen / Anthropic 适配器 |
+| 附件与多模态 | 可用 | MinIO 存储、Tika 解析、图片生成 |
+| 用户自定义模型配置（BYOK） | 可用 | 配置 `ENCRYPTION_KEY` 后密钥加密存储 |
+| 知识库 + 对话内 RAG | 可用 | Tika 解析、按知识库分块、pgvector 检索、Redis 缓存 |
+| Chat 调用外部 MCP 工具 | 可用 | 目前支持 OpenAI 兼容适配器；Anthropic 工具调用尚未接入 |
+| 后台 Agent + Docker 沙箱 | 可用 | 异步运行、步骤落库、可取消；需要 Docker |
+| Agent 自动交付 PR | 规划中 | 尚无 git/PR 集成 |
+| 在线 IDE、可视化工作流、支付、监控栈 | 已移除 | 见上文非目标 |
 
-### RAG 知识库
-
-| 功能 | 说明 |
-|------|------|
-| 多格式上传 | PDF、Markdown、代码文件等 |
-| 混合搜索 | 向量搜索 (pgvector) + 关键词搜索 (Elasticsearch) |
-| 代码索引 | 代码感知的分块与索引 |
-| 上下文注入 | 与 Chat 和 Agent 集成，自动注入知识库上下文 |
-
-### CI/CD 与部署
-
-| 功能 | 说明 |
-|------|------|
-| 自然语言配置 | 用自然语言描述流水线，自动生成配置 |
-| K8s 原生部署 | Kubernetes 原生，支持弹性伸缩 |
-| 多云支持 | AWS / GCP / Azure 统一部署 |
-| Git 触发 | 代码推送自动触发构建与部署 |
-
-### 监控与可观测性
-
-| 功能 | 说明 |
-|------|------|
-| OpenTelemetry | 内置 OTel SDK，全链路追踪 |
-| 指标/日志/链路 | Prometheus + Grafana + Loki + Jaeger 全栈 |
-| AI 异常检测 | 基于 AI 的异常自动识别与告警 |
-| 自定义告警 | 灵活的告警规则配置 |
-
-## 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 后端 | Go 1.22+ / Gin / gRPC / Wire |
-| 前端 | Next.js 15 (App Router) / React 19 / Tailwind CSS / Shadcn/ui |
-| 数据库 | PostgreSQL 16 + pgvector / Redis 7 / Kafka (KRaft) |
-| 对象存储 | MinIO (S3 兼容) |
-| 搜索引擎 | Elasticsearch 8 |
-| 工作流引擎 | Temporal |
-| 基础设施 | Docker / Kubernetes / Helm / Terraform |
-| 可观测性 | Prometheus / Grafana / Loki / Jaeger / OpenTelemetry |
-
-## 系统架构
+## 架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Gateway (Kong/自研)                       │
-│              限流 · 认证 · 路由 · WAF                        │
-└──────────┬──────────┬──────────┬──────────┬─────────────────┘
-           │          │          │          │
-     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
-     │   IDE   │ │  Chat  │ │Agent │ │   RAG   │
-     │ Service │ │ Engine │ │System│ │ Service │
-     └─────────┘ └────────┘ └──────┘ └─────────┘
-           │          │          │          │
-     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
-     │  Git    │ │  MCP   │ │Sandbox│ │  MCP   │
-     │ Service │ │ Server │ │System │ │ Server │
-     └─────────┘ └────────┘ └───────┘ └─────────┘
-           │          │          │          │
-     ┌─────┴──────────┴──────────┴──────────┴─────┐
-     │                 数据层                       │
-     │  PostgreSQL · Redis · Kafka · MinIO · ES    │
-     └─────────────────────────────────────────────┘
+apps/web（Next.js 15，React 19）
+        │ HTTP / SSE
+        ▼
+apps/gateway（Go 1.22，Gin）—— 单二进制
+  ├─ 认证 / 用户 / API Key
+  ├─ chat ─────────────┬─ knowledge-engine（内嵌 Go 模块）
+  │                    └─ MCP client → 外部 MCP server
+  └─ agent：planner → executor → tools → Docker 沙箱
+
+packages/go-common —— 配置、认证、缓存、存储、解析、中间件
+
+PostgreSQL 16 + pgvector · Redis 7 · MinIO · Apache Tika · Docker（Agent 沙箱）
 ```
 
-**Agent 执行状态机：**
-
 ```
-Created → Planning → Executing → [ToolCall → Waiting → Executing]
-                                      ↓
-                                 Success / Failed / Cancelled
-```
+omnidev/
+├── apps/
+│   ├── gateway/            # API：认证 + Chat + 知识库 + Agent
+│   │   ├── cmd/gateway/    # 入口与知识引擎装配
+│   │   ├── internal/       # adapter、agent、handler、knowledge、mcp、repository、router、service
+│   │   └── migrations/     # 001–009，单库 schema
+│   └── web/                # Next.js 前端（Chat、知识库、Agent、设置）
+├── packages/go-common/     # 共享 Go 包
+├── deploy/docker/          # compose：基础设施 + gateway + nginx
+├── docs/                   # 架构与功能文档
+└── Makefile
 
-## 项目结构
-
-```
-omnidev-ai-platform/
-├── apps/                    # 应用服务
-│   ├── web/                 # Next.js 前端
-│   ├── gateway/             # API 网关 (Go/Gin)
-│   ├── user/                # 用户服务
-│   ├── project/             # 项目服务
-│   ├── workspace/           # 工作区服务
-│   ├── terminal/            # 终端服务
-│   ├── file/                # 文件服务
-│   ├── git/                 # Git 服务
-│   ├── chat/                # Chat 服务
-│   ├── agent/               # Agent 服务
-│   ├── rag/                 # RAG 服务
-│   ├── workflow/            # 工作流服务
-│   ├── sandbox/             # 沙箱服务
-│   ├── mcp/                 # MCP 服务
-│   ├── billing/             # 计费服务
-│   ├── deploy/              # 部署服务
-│   └── monitor/             # 监控服务
-├── packages/                # 共享库
-│   ├── ui/                  # UI 组件库
-│   ├── utils/               # 通用工具
-│   ├── proto/               # gRPC Proto 定义
-│   └── types/               # 共享 TypeScript 类型
-├── tools/                   # 开发工具与脚本
-├── deploy/                  # 部署配置
-├── docs/                    # 文档
-└── web-extensions/          # 浏览器扩展
+../knowledge-engine/        # 兄弟仓库：可嵌入的 RAG 引擎 + 独立 MCP/HTTP 服务
 ```
 
 ## 快速开始
 
-### 环境要求
+依赖：Go 1.22+、Node.js 20+、pnpm 9、Docker。
 
-- Go 1.22+
-- Node.js 20+
-- Docker & Docker Compose
-- PostgreSQL 16
-- Redis 7
-
-### 本地运行
+两个仓库需要**并列克隆**，gateway 通过本地 `replace` 引用 `knowledge-engine`：
 
 ```bash
-# 克隆仓库
-git clone https://github.com/your-org/omnidev-ai-platform.git
-cd omnidev-ai-platform
-
-# 启动基础设施
-docker-compose up -d postgres redis kafka minio elasticsearch
-
-# 执行数据库迁移
-cd tools/migrations && make migrate-up
-
-# 启动后端服务
-cd apps/gateway && go run cmd/main.go
-
-# 启动前端
-cd apps/web && pnpm install && pnpm dev
+git clone git@github.com:m2lan/omnidev.git
+git clone git@github.com:m2lan/knowledge-engine.git
+cd omnidev
+cp .env.example .env   # 填入你的模型 Key
 ```
 
-### 环境变量
-
-复制 `.env.example` 到 `.env` 并配置：
+### 方式 A：在宿主机运行 gateway
 
 ```bash
-cp .env.example .env
+make dev-infra      # PostgreSQL、Redis、MinIO、Tika，并自动执行迁移
+make run-gateway    # API：:9090
+make web-dev        # 前端：:3000
 ```
 
-关键变量：
-- `DATABASE_URL` — PostgreSQL 连接字符串
-- `REDIS_URL` — Redis 连接字符串
-- `JWT_SECRET` — JWT 签名密钥
-- `OPENAI_API_KEY` — OpenAI API Key（或其他 AI 提供商）
+### 方式 B：全部用 Docker 运行
 
-#### RAG 向量模型配置
+```bash
+make dev            # 基础设施 + gateway + nginx（自动构建镜像）
+```
 
-配置 RAG 知识库的向量模型提供商。采用 provider 级别配置，不再通过模型名猜测：
+gateway 容器挂载 `/var/run/docker.sock`，用于启动 Agent 沙箱容器。请把 `SANDBOX_HOST_WORKSPACE_ROOT` 设为工作区目录在**宿主机**上的路径（默认 `/tmp/omnidev-agent-workspaces`）；Linux 下如 Docker socket 有用户组限制，还需设置 `DOCKER_GID`。
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `RAG_EMBEDDING_PROVIDER` | 提供商名称：`openai` / `gemini` / `ollama` | `openai` |
-| `RAG_EMBEDDING_MODEL` | 模型标识符（各提供商不同） | `text-embedding-3-small` |
-| `RAG_EMBEDDING_API_KEY` | API Key 覆盖（可选，不填则用对应提供商的 key） | — |
-| `RAG_EMBEDDING_BASE_URL` | 自部署服务地址（Ollama、vLLM 等） | — |
+### Agent 沙箱
 
-配置示例：
+```bash
+make sandbox-images   # 预拉取 python/node/go/shell 运行镜像
+```
+
+每次运行都有独立工作区，挂载到容器 `/workspace`。容器默认无网络、根文件系统只读、`/tmp` 为 tmpfs、丢弃全部 capabilities、启用 `no-new-privileges`，并限制 CPU / 内存 / PID 数与超时时间（`SANDBOX_TIMEOUT`，默认 120 秒）。支持 Python、JavaScript/Node、Go、shell。
+
+## 配置
+
+全部通过环境变量配置，完整清单见 [`.env.example`](.env.example)。
+
+| 范围 | 变量 |
+|------|------|
+| 服务与数据库 | `APP_*`、`DB_*`、`REDIS_*` |
+| 认证 | `JWT_SECRET`、`JWT_ACCESS_EXPIRY`、`JWT_REFRESH_EXPIRY`、`ENCRYPTION_KEY` |
+| 模型 | `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`QWEN_API_KEY`、`ANTHROPIC_API_KEY`、`AI_DEFAULT_MODEL` |
+| 文件 | `MINIO_*`、`TIKA_ENDPOINT` |
+| 知识库 | `RAG_EMBEDDING_PROVIDER/MODEL/API_KEY/BASE_URL`、`KNOWLEDGE_*` |
+| MCP | `MCP_ENABLED`、`MCP_SERVERS`（JSON 数组，元素为 `{name, url, api_key, timeout_seconds, headers}`） |
+| Agent | `AGENT_MODEL`、`AGENT_BASE_URL`、`AGENT_API_KEY`、`SANDBOX_*` |
+
+向量维度按知识库跟随 embedding 模型（`KNOWLEDGE_EMBEDDING_DIMENSIONS=0` 表示使用 Provider 默认值），768 维与 1536 维模型可以共存。
+
+MCP 配置示例：
 
 ```env
-# OpenAI（默认）
-RAG_EMBEDDING_PROVIDER=openai
-RAG_EMBEDDING_MODEL=text-embedding-3-small
-
-# Gemini
-RAG_EMBEDDING_PROVIDER=gemini
-RAG_EMBEDDING_MODEL=gemini-embedding-2
-
-# Ollama（本地部署）
-RAG_EMBEDDING_PROVIDER=ollama
-RAG_EMBEDDING_MODEL=nomic-embed-text
-RAG_EMBEDDING_BASE_URL=http://localhost:11434/v1
-
-# 自部署兼容 OpenAI 接口（vLLM、text-embedding-inference 等）
-RAG_EMBEDDING_PROVIDER=openai
-RAG_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
-RAG_EMBEDDING_BASE_URL=http://your-server:8080/v1
+MCP_ENABLED=true
+MCP_SERVERS=[{"name":"knowledge","url":"http://localhost:9100/mcp","timeout_seconds":15}]
 ```
 
-扩展新向量模型提供商：在 `embedder/registry.go` 中注册 factory 即可，无需修改 main.go。
+Chat 每条消息最多执行 5 轮工具调用，工具输出截断到 8000 字符；调用过的工具记录在助手消息的 `tools_used` 元数据中。当前 MCP 工具仅提供给 OpenAI 兼容适配器（OpenAI、DeepSeek、Qwen），Anthropic 的 `tool_use` 映射尚未实现。
 
-## 竞品对比
+## Agent API
 
-| 能力域 | 竞品 | OmniDev 差异化 |
-|--------|------|----------------|
-| AI 编程助手 | Cursor, GitHub Copilot | 多模型切换 + 本地模型 + RAG 增强 |
-| 在线 IDE | GitHub Codespaces, Gitpod | 内嵌 AI Agent + 一键部署 |
-| Agent 平台 | OpenHands, AutoGPT | 可视化编排 + 沙箱执行 + 插件市场 |
-| RAG / 知识库 | ChatGPT Projects, Notion AI | 多格式上传 + 混合搜索 + 代码索引 |
-| CI/CD | Jenkins, GitHub Actions | 自然语言配置 + K8s 原生 |
-| 部署托管 | Vercel, Railway | 多云 + K8s + 成本优化 |
-| 监控 | Grafana Cloud | 内置 OpenTelemetry + AI 异常检测 |
+以下路由都需要 JWT，且仅在 `SANDBOX_ENABLED=true` 时注册。
 
-## 目标用户
+| 方法 | 路径 | 作用 |
+|------|------|------|
+| GET / POST | `/api/v1/agents` | 列出 / 创建 Agent |
+| GET / PATCH / DELETE | `/api/v1/agents/:id` | 查看 / 更新 / 删除 Agent |
+| POST | `/api/v1/agents/:id/run` | 启动异步运行（`{"task": "..."}`） |
+| GET | `/api/v1/agents/:id/runs` | 运行列表 |
+| GET | `/api/v1/agent-runs/:run_id` | 运行详情（含步骤） |
+| POST | `/api/v1/agent-runs/:run_id/cancel` | 取消运行 |
 
-| 用户画像 | 核心场景 |
-|----------|----------|
-| 独立开发者 | 快速原型 → AI 辅助编码 → 一键上线 |
-| 小团队 (2-10 人) | 协作开发 + Agent 自动化 + 共享知识库 |
-| 中大型团队 (10-100 人) | RBAC + 审计 + 合规 + 私有部署 |
-| AI 应用开发者 | 构建/调试/部署 Agent 和 MCP Server |
+## 开发
 
-## 开发路线图
+```bash
+go build ./apps/gateway/... ./packages/go-common/...
+go test  ./apps/gateway/... ./packages/go-common/...
+go vet   ./apps/gateway/... ./packages/go-common/...
+pnpm --filter web typecheck
 
-| 里程碑 | 时间 | 交付内容 |
-|--------|------|----------|
-| **M0 — 基础架构** | 第 1-2 月 | 基础设施、数据库、认证、CI/CD |
-| **M1 — Alpha** | 第 3-4 月 | IDE (Monaco + 终端) + Agent (基础执行 + Tool Calling + 沙箱) |
-| **M2 — Beta** | 第 5-6 月 | IDE (Git + Code Review) + Agent (前端 + 执行监控) |
-| **M3 — 生态扩展** | 第 7-9 月 | Agent 可视化编排 + 模板市场 + 多 Agent 协作 |
-| **M4 — 正式发布** | 第 10-12 月 | 性能优化 + 安全加固 + 插件系统 |
-
-## 商业模式
-
-```
-Free Tier        → 个人开发者，基础模型额度，公开项目
-Pro ($29/月)     → 高级模型，私有项目，更多存储/算力
-Team ($19/人/月) → 协作，RBAC，共享资源池
-Enterprise       → 私有部署，SLA，专属支持
+make db-migrate                 # 对本地数据库执行迁移
+make db-migrate-create NAME=x   # 在 apps/gateway/migrations 新建迁移
 ```
 
-## 文档索引
+## 文档
 
-| 文档 | 说明 |
+| 文档 | 内容 |
 |------|------|
-| [执行摘要](docs/architecture/00-EXECUTIVE-SUMMARY.md) | 项目愿景与定位 |
-| [需求分析](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | 功能与非功能需求 |
-| [功能边界](docs/architecture/02-FEATURE-BOUNDARY.md) | 模块边界与依赖关系 |
-| [非功能需求](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | 性能、安全、可用性指标 |
-| [技术选型](docs/architecture/04-TECHNOLOGY-SELECTION.md) | 技术栈对比分析 |
-| [系统架构](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | 架构图 (Mermaid) |
-| [数据库设计](docs/architecture/06-DATABASE-DESIGN.md) | ER 图与表结构 |
-| [目录结构](docs/architecture/07-DIRECTORY-STRUCTURE.md) | 项目目录规范 |
-| [开发规范](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | 编码规范与流程 |
-| [里程碑计划](docs/architecture/09-MILESTONE-PLAN.md) | 详细里程碑排期 |
+| [执行摘要](docs/architecture/00-EXECUTIVE-SUMMARY.md) | 定位与范围 |
+| [需求分析](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | 做什么、不做什么 |
+| [功能边界](docs/architecture/02-FEATURE-BOUNDARY.md) | 模块边界 |
+| [非功能需求](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | 安全、隔离、限额 |
+| [技术选型](docs/architecture/04-TECHNOLOGY-SELECTION.md) | 技术栈与移除的依赖 |
+| [系统架构](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | 请求链路与运行拓扑 |
+| [数据库设计](docs/architecture/06-DATABASE-DESIGN.md) | 真实表结构 |
+| [目录结构](docs/architecture/07-DIRECTORY-STRUCTURE.md) | 项目布局 |
+| [开发规范](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | 约定与流程 |
+| [里程碑计划](docs/architecture/09-MILESTONE-PLAN.md) | 已完成 / 规划中 / 已取消 |
+| [文件上传与多模态](docs/features/file-upload-and-multimodal.md) | 附件与解析 |
 
-## 开源协议
+## 许可证
 
 [MIT](LICENSE)

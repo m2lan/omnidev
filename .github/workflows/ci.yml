@@ -1,6 +1,7 @@
 # =============================================================================
-# OmniDev AI Platform — CI Pipeline
-# Runs on every push and pull request
+# OmniDev CI — modular monolith (gateway + go-common + web)
+# The gateway imports the sibling knowledge-engine module, so both repositories
+# are checked out side by side.
 # =============================================================================
 
 name: CI
@@ -16,29 +17,29 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Go Lint
-  # ---------------------------------------------------------------------------
   go-lint:
     name: Go Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
+      - uses: actions/checkout@v4
+        with:
+          repository: m2lan/knowledge-engine
+          path: knowledge-engine
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
           version: latest
-          args: --timeout=5m
+          working-directory: omnidev
+          args: --timeout=5m ./apps/gateway/... ./packages/go-common/...
 
-  # ---------------------------------------------------------------------------
-  # Go Test
-  # ---------------------------------------------------------------------------
   go-test:
     name: Go Test
     runs-on: ubuntu-latest
@@ -71,14 +72,29 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
+      - uses: actions/checkout@v4
+        with:
+          repository: m2lan/knowledge-engine
+          path: knowledge-engine
 
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
+
+      - name: Run database migrations
+        run: >-
+          docker run --rm --network host
+          -v "$PWD/omnidev/apps/gateway/migrations:/migrations"
+          migrate/migrate:v4.17.1
+          -path /migrations
+          -database "postgres://omnidev:omnidev@localhost:5432/omnidev_test?sslmode=disable"
+          up
 
       - name: Run tests
-        run: go test ./... -v -race -count=1 -coverprofile=coverage.out -covermode=atomic
+        working-directory: omnidev
+        run: go test ./apps/gateway/... ./packages/go-common/... -race -count=1 -coverprofile=coverage.out -covermode=atomic
         env:
           DB_HOST: localhost
           DB_PORT: 5432
@@ -93,16 +109,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.out
+          path: omnidev/coverage.out
 
-  # ---------------------------------------------------------------------------
-  # Frontend Lint
-  # ---------------------------------------------------------------------------
   frontend-lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnidev
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
 
       - uses: pnpm/action-setup@v4
         with:
@@ -112,6 +130,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+          cache-dependency-path: omnidev/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -120,17 +139,19 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm --filter web typecheck
 
-  # ---------------------------------------------------------------------------
-  # Frontend Test
-  # ---------------------------------------------------------------------------
   frontend-test:
     name: Frontend Test
     runs-on: ubuntu-latest
     needs: frontend-lint
+    defaults:
+      run:
+        working-directory: omnidev
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
 
       - uses: pnpm/action-setup@v4
         with:
@@ -140,6 +161,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+          cache-dependency-path: omnidev/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -147,43 +169,34 @@ jobs:
       - name: Test
         run: pnpm test
 
-  # ---------------------------------------------------------------------------
-  # Build Docker Images
-  # ---------------------------------------------------------------------------
   docker-build:
-    name: Docker Build
+    name: Gateway Docker Build
     runs-on: ubuntu-latest
     needs: [go-test, frontend-test]
     if: github.event_name == 'push'
 
-    strategy:
-      matrix:
-        service:
-          - gateway
-          - user
-          - chat
-          - agent
-          - rag
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
+      - uses: actions/checkout@v4
+        with:
+          repository: m2lan/knowledge-engine
+          path: knowledge-engine
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.service }}
+      - name: Build gateway
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: apps/services/${{ matrix.service }}/Dockerfile
+          file: omnidev/apps/gateway/Dockerfile
           push: false
-          tags: omnidev/${{ matrix.service }}:${{ github.sha }}
+          tags: omnidev/gateway:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ---------------------------------------------------------------------------
-  # Security Scan
-  # ---------------------------------------------------------------------------
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 
 const ACCEPTED_TYPES = [
   ".pdf", ".docx", ".pptx", ".xlsx", ".md", ".txt",

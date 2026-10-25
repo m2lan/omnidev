@@ -1,871 +1,166 @@
-# OmniDev AI Platform — 项目目录结构
+# OmniDev — 项目目录结构
 
-## 1. Monorepo 总览
+## 1. 仓库关系
 
+OmniDev 当前由一个主仓库和一个并列的知识引擎仓库组成：
+
+```text
+ai-project/
+├── omnidev/                 # Web、模块化单体后端、部署与文档
+└── knowledge-engine/        # 可嵌入的 RAG 引擎，也可独立运行 HTTP / MCP server
 ```
+
+`apps/gateway/go.mod` 通过本地 `replace` 指向 `../knowledge-engine`，因此开发和 CI 都要让两个仓库保持并列目录。知识引擎自身的目录与独立部署说明由该仓库维护。
+
+## 2. 主仓库实际布局
+
+```text
 omnidev/
-├── .github/                    # GitHub Actions CI/CD
-│   ├── workflows/
-│   │   ├── ci.yml
-│   │   ├── cd-staging.yml
-│   │   ├── cd-production.yml
-│   │   └── release.yml
-│   ├── CODEOWNERS
-│   └── pull_request_template.md
-│
-├── .claude/                    # Claude Code 配置
-│   ├── CLAUDE.md
-│   └── settings.json
-│
-├── apps/                       # 应用层（可独立部署）
-│   ├── web/                    # 前端 Next.js 应用
-│   ├── gateway/                # API Gateway (Go)
-│   ├── services/               # 后端微服务
-│   └── workers/                # 后台工作者
-│
-├── packages/                   # 共享包（库）
-│   ├── proto/                  # Protobuf 定义
-│   ├── go-common/              # Go 公共库
-│   ├── ts-common/              # TypeScript 公共库
-│   ├── ui/                     # UI 组件库 (Shadcn)
-│   └── config/                 # 共享配置
-│
-├── deploy/                     # 部署配置
-│   ├── docker/
-│   ├── helm/
-│   ├── terraform/
-│   └── k8s/
-│
-├── scripts/                    # 工具脚本
-├── docs/                       # 文档
-├── tools/                      # 开发工具
-│
-├── docker-compose.yml          # 本地开发环境
-├── Makefile                    # 全局构建命令
-├── go.work                     # Go workspace
-├── turbo.json                  # Turborepo 配置
-├── package.json                # 根 package.json
-└── README.md
+├── .github/workflows/
+│   ├── ci.yml                    # Go / Web 检查、迁移与镜像构建
+│   └── cd-staging.yml            # 构建并推送 gateway 镜像
+├── apps/
+│   ├── gateway/                  # 唯一后端进程
+│   └── web/                      # Next.js 前端
+├── packages/
+│   └── go-common/                # 共享 Go 基础包
+├── deploy/docker/
+│   ├── docker-compose.infra.yml  # PostgreSQL、Redis、MinIO、Tika、迁移
+│   ├── docker-compose.dev.yml    # gateway、nginx 与沙箱挂载
+│   ├── init-scripts/
+│   └── nginx/
+├── docs/
+│   ├── architecture/             # 当前架构、边界、数据库与计划
+│   └── features/                 # 已实现功能的专项说明
+├── scripts/setup.sh              # 本地开发环境初始化
+├── .env.example                  # 当前有效环境变量
+├── go.work                       # apps/gateway + packages/go-common
+├── Makefile                      # 单体后端与 Web 的开发命令
+├── package.json                  # 根前端任务
+├── pnpm-workspace.yaml           # pnpm workspace，当前只包含 apps/web
+├── pnpm-lock.yaml
+├── turbo.json
+├── README.md
+└── README_zh.md
 ```
 
----
+已删除旧规划中的 `apps/services`、`apps/workers`、`packages/proto`、`deploy/helm` 等目录；新增功能不应重新按微服务复制骨架。
 
-## 2. 前端应用 `apps/web/`
+## 3. Gateway：`apps/gateway/`
 
+```text
+apps/gateway/
+├── cmd/gateway/main.go           # 配置加载、依赖装配、路由与进程启动
+├── internal/
+│   ├── adapter/                  # OpenAI、DeepSeek、Qwen、Anthropic 等模型适配器
+│   ├── agent/
+│   │   ├── domain/               # Agent、Run、Step 与工具配置模型
+│   │   ├── planner/              # 任务规划与后续步骤决策
+│   │   ├── executor/             # 执行循环、工作区与 Docker 沙箱
+│   │   ├── tools/                # file、search、calculator、code_exec
+│   │   ├── repository/           # Agent、运行和步骤持久化
+│   │   ├── service/              # 异步运行、查询与取消
+│   │   └── handler/              # Agent HTTP API
+│   ├── domain/                   # 用户、会话、消息等领域模型
+│   ├── handler/                  # 认证、用户、Chat、健康检查等 HTTP Handler
+│   ├── knowledge/                # knowledge-engine 的 gateway 接入层
+│   ├── mcp/                      # Streamable HTTP MCP client 与工具管理器
+│   ├── repository/               # 用户、会话、消息等数据访问
+│   ├── router/                   # Gin 路由与中间件组合
+│   └── service/                  # 认证、用户、Chat 与模型配置业务逻辑
+├── migrations/                   # 单库顺序迁移，001–009，up/down 成对
+├── Dockerfile                    # gateway 镜像，包含 Docker CLI
+├── go.mod                        # 引用 go-common 与 knowledge-engine
+└── go.sum
 ```
+
+### 约定
+
+- 新代码优先加入现有模块，不在 `cmd` 下增加第二个长期运行服务。
+- HTTP 层负责协议与鉴权，业务层负责流程，repository 负责持久化。
+- Agent 专属类型和逻辑保留在 `internal/agent`，避免与 Chat 的通用 service 混杂。
+- 新表只在这里增加连续编号的 up/down 迁移，不恢复各服务独立 migrations。
+- `knowledge-engine` 的 RAG 实现保留在兄弟仓库；这里只放装配和平台集成代码。
+
+## 4. Web：`apps/web/`
+
+```text
 apps/web/
 ├── public/
-│   ├── icons/
-│   ├── images/
-│   └── favicon.ico
-│
 ├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── layout.tsx          # 根布局
-│   │   ├── page.tsx            # 首页
-│   │   ├── (auth)/             # 认证相关页面
-│   │   │   ├── login/
-│   │   │   │   └── page.tsx
-│   │   │   ├── register/
-│   │   │   │   └── page.tsx
-│   │   │   └── layout.tsx
-│   │   │
-│   │   ├── (dashboard)/        # 仪表盘（需登录）
-│   │   │   ├── layout.tsx      # 侧边栏 + 顶栏布局
-│   │   │   ├── page.tsx        # Dashboard 首页
-│   │   │   │
-│   │   │   ├── chat/           # AI Chat 模块
-│   │   │   │   ├── page.tsx    # 会话列表
-│   │   │   │   ├── [id]/
-│   │   │   │   │   └── page.tsx # 单个会话
-│   │   │   │   └── prompts/    # Prompt 管理
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── agent/          # Agent 模块
-│   │   │   │   ├── page.tsx    # Agent 列表
-│   │   │   │   ├── [id]/
-│   │   │   │   │   └── page.tsx # Agent 详情
-│   │   │   │   ├── runs/       # 执行记录
-│   │   │   │   │   └── page.tsx
-│   │   │   │   └── create/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── knowledge/      # RAG 知识库
-│   │   │   │   ├── page.tsx    # 知识库列表
-│   │   │   │   ├── [id]/
-│   │   │   │   │   ├── page.tsx
-│   │   │   │   │   └── documents/
-│   │   │   │   │       └── page.tsx
-│   │   │   │   └── upload/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── ide/            # 在线 IDE
-│   │   │   │   ├── page.tsx    # 项目列表
-│   │   │   │   └── [id]/
-│   │   │   │       ├── page.tsx # IDE 主界面
-│   │   │   │       └── terminal/
-│   │   │   │           └── page.tsx
-│   │   │   │
-│   │   │   ├── workflow/       # 工作流
-│   │   │   │   ├── page.tsx
-│   │   │   │   ├── [id]/
-│   │   │   │   │   ├── page.tsx
-│   │   │   │   │   └── editor/
-│   │   │   │   │       └── page.tsx
-│   │   │   │   └── runs/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── mcp/            # MCP Server
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── deploy/         # 部署
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── monitoring/     # 监控
-│   │   │   │   ├── page.tsx
-│   │   │   │   ├── logs/
-│   │   │   │   │   └── page.tsx
-│   │   │   │   └── traces/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   ├── billing/        # 计费
-│   │   │   │   ├── page.tsx
-│   │   │   │   ├── usage/
-│   │   │   │   │   └── page.tsx
-│   │   │   │   └── invoices/
-│   │   │   │       └── page.tsx
-│   │   │   │
-│   │   │   └── settings/       # 设置
-│   │   │       ├── page.tsx
-│   │   │       ├── profile/
-│   │   │       │   └── page.tsx
-│   │   │       ├── api-keys/
-│   │   │       │   └── page.tsx
-│   │   │       └── organization/
-│   │   │           └── page.tsx
-│   │   │
-│   │   ├── admin/              # 管理后台
-│   │   │   ├── layout.tsx
-│   │   │   ├── page.tsx
-│   │   │   ├── users/
-│   │   │   ├── models/
-│   │   │   ├── billing/
-│   │   │   ├── audit/
-│   │   │   └── settings/
-│   │   │
-│   │   └── api/                # Next.js API Routes (BFF)
-│   │       ├── auth/
-│   │       ├── chat/
-│   │       └── health/
-│   │
-│   ├── components/             # 通用组件
-│   │   ├── ui/                 # Shadcn/ui 组件
-│   │   │   ├── button.tsx
-│   │   │   ├── input.tsx
-│   │   │   ├── dialog.tsx
-│   │   │   ├── dropdown-menu.tsx
-│   │   │   ├── sheet.tsx
-│   │   │   ├── tabs.tsx
-│   │   │   ├── toast.tsx
-│   │   │   └── ...
-│   │   │
-│   │   ├── layout/             # 布局组件
-│   │   │   ├── sidebar.tsx
-│   │   │   ├── header.tsx
-│   │   │   ├── footer.tsx
-│   │   │   └── breadcrumbs.tsx
-│   │   │
-│   │   ├── chat/               # Chat 专用组件
-│   │   │   ├── chat-input.tsx
-│   │   │   ├── message-bubble.tsx
-│   │   │   ├── code-block.tsx
-│   │   │   ├── model-selector.tsx
-│   │   │   └── conversation-list.tsx
-│   │   │
-│   │   ├── agent/              # Agent 专用组件
-│   │   │   ├── agent-card.tsx
-│   │   │   ├── step-timeline.tsx
-│   │   │   ├── tool-call-view.tsx
-│   │   │   └── run-status.tsx
-│   │   │
-│   │   ├── editor/             # IDE 组件
-│   │   │   ├── monaco-editor.tsx
-│   │   │   ├── file-tree.tsx
-│   │   │   ├── terminal.tsx
-│   │   │   ├── git-panel.tsx
-│   │   │   └── diff-viewer.tsx
-│   │   │
-│   │   ├── workflow/           # 工作流组件
-│   │   │   ├── canvas.tsx
-│   │   │   ├── node-palette.tsx
-│   │   │   ├── workflow-node.tsx
-│   │   │   └── edge-connector.tsx
-│   │   │
-│   │   └── shared/             # 通用业务组件
-│   │       ├── data-table.tsx
-│   │       ├── search-input.tsx
-│   │       ├── file-upload.tsx
-│   │       ├── markdown-renderer.tsx
-│   │       ├── json-viewer.tsx
-│   │       └── empty-state.tsx
-│   │
-│   ├── hooks/                  # 自定义 Hooks
-│   │   ├── use-chat.ts
-│   │   ├── use-agent.ts
-│   │   ├── use-websocket.ts
-│   │   ├── use-keyboard.ts
-│   │   ├── use-theme.ts
-│   │   └── use-debounce.ts
-│   │
-│   ├── lib/                    # 工具库
-│   │   ├── api/                # API 客户端
-│   │   │   ├── client.ts       # Axios/Fetch 封装
-│   │   │   ├── auth.ts
-│   │   │   ├── chat.ts
-│   │   │   ├── agent.ts
-│   │   │   ├── knowledge.ts
-│   │   │   ├── project.ts
-│   │   │   ├── workflow.ts
-│   │   │   └── mcp.ts
-│   │   │
-│   │   ├── utils/
-│   │   │   ├── cn.ts           # className 合并
-│   │   │   ├── format.ts       # 格式化工具
-│   │   │   ├── storage.ts      # localStorage 封装
-│   │   │   └── validation.ts   # 表单验证
-│   │   │
-│   │   └── constants/
-│   │       ├── models.ts
-│   │       ├── routes.ts
-│   │       └── config.ts
-│   │
-│   ├── stores/                 # 状态管理 (Zustand)
-│   │   ├── auth-store.ts
-│   │   ├── chat-store.ts
-│   │   ├── editor-store.ts
-│   │   ├── workflow-store.ts
-│   │   └── theme-store.ts
-│   │
-│   ├── types/                  # TypeScript 类型
-│   │   ├── api.ts
-│   │   ├── chat.ts
-│   │   ├── agent.ts
-│   │   ├── knowledge.ts
-│   │   ├── project.ts
-│   │   └── workflow.ts
-│   │
-│   └── styles/                 # 全局样式
-│       ├── globals.css
-│       └── editor.css
-│
-├── .env.local
-├── .env.example
+│   ├── app/
+│   │   ├── page.tsx              # 产品入口页
+│   │   ├── layout.tsx
+│   │   ├── (auth)/               # 登录与注册
+│   │   └── (dashboard)/
+│   │       ├── layout.tsx        # 当前导航，只保留实际页面
+│   │       ├── chat/             # 多模型对话
+│   │       ├── knowledge/        # 知识库与文档
+│   │       ├── agent/            # Agent 配置、异步运行、步骤与取消
+│   │       └── settings/         # 用户、模型密钥等设置
+│   ├── components/
+│   │   ├── ui/                   # 基础 UI 组件
+│   │   ├── chat/
+│   │   ├── knowledge/
+│   │   ├── settings/
+│   │   └── providers.tsx
+│   ├── lib/
+│   │   ├── api/client.ts         # 与 gateway 对应的 API 和类型
+│   │   └── utils.ts
+│   └── stores/
+│       ├── auth-store.ts
+│       └── chat-store.ts
 ├── next.config.ts
-├── tailwind.config.ts
-├── tsconfig.json
 ├── package.json
-└── README.md
+├── tsconfig.json
+└── tailwind.config.ts
 ```
 
----
+前端不保留没有后端能力的演示页。IDE、Workflow、Billing、Deploy 和 Monitoring 页面已移除；Agent 页面读取真实 API，不生成模拟步骤。
 
-## 3. API Gateway `apps/gateway/`
+## 5. 共享包：`packages/go-common/`
 
-```
-apps/gateway/
-├── cmd/
-│   └── gateway/
-│       └── main.go
-│
-├── internal/
-│   ├── config/                 # 配置
-│   │   └── config.go
-│   │
-│   ├── middleware/              # 中间件
-│   │   ├── auth.go             # JWT 认证
-│   │   ├── rate_limit.go       # 限流
-│   │   ├── cors.go
-│   │   ├── logger.go
-│   │   ├── recovery.go
-│   │   └── request_id.go
-│   │
-│   ├── router/                 # 路由
-│   │   ├── router.go           # 路由注册
-│   │   ├── auth.go
-│   │   ├── chat.go
-│   │   ├── agent.go
-│   │   ├── knowledge.go
-│   │   ├── project.go
-│   │   ├── workflow.go
-│   │   ├── mcp.go
-│   │   ├── deploy.go
-│   │   └── admin.go
-│   │
-│   ├── handler/                # HTTP 处理器
-│   │   ├── auth.go
-│   │   ├── chat.go             # SSE 流式处理
-│   │   ├── agent.go
-│   │   ├── knowledge.go
-│   │   ├── project.go
-│   │   ├── workflow.go
-│   │   ├── mcp.go
-│   │   ├── deploy.go
-│   │   └── health.go
-│   │
-│   ├── proxy/                  # 代理层
-│   │   ├── grpc_proxy.go       # gRPC 代理
-│   │   ├── ws_proxy.go         # WebSocket 代理
-│   │   └── sse_proxy.go        # SSE 代理
-│   │
-│   └── validator/              # 请求验证
-│       └── validator.go
-│
-├── Dockerfile
+```text
+packages/go-common/
+├── auth/                         # JWT 与认证辅助
+├── cache/                        # Redis
+├── config/                       # 配置结构、env 绑定与加载
+├── crypto/                       # 密钥加解密
+├── database/                     # PostgreSQL 连接
+├── domain/                       # 跨模块共享的基础类型
+├── errors/                       # 统一错误
+├── logger/                       # 日志
+├── middleware/                   # 通用 Gin 中间件
+├── parser/                       # Tika 文档解析
+├── storage/                      # MinIO 对象存储
+├── telemetry/                    # 基础遥测辅助，不代表完整监控平台
+├── validator/                    # 输入验证
 ├── go.mod
-└── README.md
+└── go.sum
 ```
 
----
+只有 gateway 与其他 Go 模块确实共用的基础能力才放入该包；业务逻辑仍归各自模块。Kafka event 包已经删除。
 
-## 4. 后端微服务 `apps/services/`
+## 6. 部署与脚本
 
-```
-apps/services/
-├── user/                       # 用户服务
-│   ├── cmd/
-│   │   └── user/
-│   │       └── main.go
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/             # 领域模型
-│   │   │   ├── user.go
-│   │   │   ├── organization.go
-│   │   │   ├── api_key.go
-│   │   │   └── role.go
-│   │   ├── repository/         # 数据访问层
-│   │   │   ├── user_repo.go
-│   │   │   ├── org_repo.go
-│   │   │   └── key_repo.go
-│   │   ├── service/            # 业务逻辑层
-│   │   │   ├── auth_service.go
-│   │   │   ├── user_service.go
-│   │   │   ├── org_service.go
-│   │   │   └── rbac_service.go
-│   │   ├── handler/            # gRPC 处理器
-│   │   │   ├── auth_handler.go
-│   │   │   ├── user_handler.go
-│   │   │   └── org_handler.go
-│   │   └── event/              # 事件处理
-│   │       └── publisher.go
-│   ├── migrations/             # 数据库迁移
-│   │   ├── 001_create_users.up.sql
-│   │   ├── 001_create_users.down.sql
-│   │   └── ...
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── chat/                       # AI Chat 服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   │   ├── conversation.go
-│   │   │   ├── message.go
-│   │   │   └── prompt.go
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── chat_service.go
-│   │   │   ├── conversation_service.go
-│   │   │   ├── prompt_service.go
-│   │   │   └── stream_service.go
-│   │   ├── handler/
-│   │   ├── adapter/            # AI 模型适配器
-│   │   │   ├── adapter.go      # 接口定义
-│   │   │   ├── openai.go
-│   │   │   ├── anthropic.go
-│   │   │   ├── gemini.go
-│   │   │   ├── deepseek.go
-│   │   │   ├── qwen.go
-│   │   │   ├── ollama.go
-│   │   │   └── router.go       # 模型路由器
-│   │   └── event/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── agent/                      # Agent 服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   │   ├── agent.go
-│   │   │   ├── run.go
-│   │   │   ├── step.go
-│   │   │   └── tool.go
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── agent_service.go
-│   │   │   ├── planner.go      # 任务规划
-│   │   │   ├── executor.go     # 步骤执行
-│   │   │   └── tool_manager.go
-│   │   ├── handler/
-│   │   ├── tools/              # 内置工具
-│   │   │   ├── tool.go         # 工具接口
-│   │   │   ├── file_tool.go
-│   │   │   ├── search_tool.go
-│   │   │   ├── calculator.go
-│   │   │   └── registry.go
-│   │   └── event/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── rag/                        # RAG 服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   │   ├── knowledge_base.go
-│   │   │   ├── document.go
-│   │   │   └── chunk.go
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── kb_service.go
-│   │   │   ├── doc_service.go
-│   │   │   ├── parser/         # 文档解析器
-│   │   │   │   ├── parser.go
-│   │   │   │   ├── pdf.go
-│   │   │   │   ├── docx.go
-│   │   │   │   ├── pptx.go
-│   │   │   │   ├── xlsx.go
-│   │   │   │   └── markdown.go
-│   │   │   ├── chunker/        # 分块器
-│   │   │   │   ├── chunker.go
-│   │   │   │   └── semantic.go
-│   │   │   ├── embedder/       # 向量化
-│   │   │   │   ├── embedder.go
-│   │   │   │   └── openai.go
-│   │   │   └── retriever/      # 检索器
-│   │   │       ├── retriever.go
-│   │   │       ├── vector.go
-│   │   │       ├── bm25.go
-│   │   │       ├── hybrid.go
-│   │   │       └── reranker.go
-│   │   ├── handler/
-│   │   └── event/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── ide/                        # IDE 服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── file_service.go
-│   │   │   ├── git_service.go
-│   │   │   ├── terminal_service.go
-│   │   │   └── workspace_service.go
-│   │   ├── handler/
-│   │   │   ├── file_handler.go
-│   │   │   ├── git_handler.go
-│   │   │   ├── ws_handler.go   # WebSocket 处理
-│   │   │   └── terminal_handler.go
-│   │   └── ws/                 # WebSocket 管理
-│   │       ├── hub.go
-│   │       ├── client.go
-│   │       └── message.go
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── workflow/                   # 工作流服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   │   ├── workflow.go
-│   │   │   ├── node.go
-│   │   │   └── run.go
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── workflow_service.go
-│   │   │   ├── executor.go
-│   │   │   └── parser.go
-│   │   ├── handler/
-│   │   ├── activities/         # Temporal Activities
-│   │   │   ├── ai_activity.go
-│   │   │   ├── http_activity.go
-│   │   │   ├── sql_activity.go
-│   │   │   ├── code_activity.go
-│   │   │   └── condition_activity.go
-│   │   └── workflows/          # Temporal Workflows
-│   │       └── engine.go
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── mcp/                        # MCP 服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── server_service.go
-│   │   │   ├── tool_service.go
-│   │   │   └── router.go
-│   │   ├── handler/
-│   │   ├── protocol/           # MCP 协议实现
-│   │   │   ├── mcp.go
-│   │   │   ├── sse_transport.go
-│   │   │   └── stdio_transport.go
-│   │   └── builtin/            # 内置 MCP Server
-│   │       ├── filesystem.go
-│   │       ├── github.go
-│   │       ├── browser.go
-│   │       ├── sql.go
-│   │       └── docker.go
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── deploy/                     # 部署服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── deploy_service.go
-│   │   │   ├── builder.go      # 镜像构建
-│   │   │   ├── docker.go       # Docker 部署
-│   │   │   ├── kubernetes.go   # K8s 部署
-│   │   │   └── domain.go       # 域名管理
-│   │   └── handler/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── billing/                    # 计费服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── billing_service.go
-│   │   │   ├── metering.go     # 用量计量
-│   │   │   ├── invoice.go      # 账单生成
-│   │   │   └── payment/        # 支付集成
-│   │   │       ├── stripe.go
-│   │   │       ├── wechat.go
-│   │   │       └── alipay.go
-│   │   ├── handler/
-│   │   └── event/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── admin/                      # 管理服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── admin_service.go
-│   │   │   ├── model_service.go
-│   │   │   ├── audit_service.go
-│   │   │   └── stats_service.go
-│   │   └── handler/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-├── notification/               # 通知服务
-│   ├── cmd/
-│   ├── internal/
-│   │   ├── config/
-│   │   ├── domain/
-│   │   ├── repository/
-│   │   ├── service/
-│   │   │   ├── notification_service.go
-│   │   │   └── channels/       # 通知渠道
-│   │   │       ├── email.go
-│   │   │       ├── slack.go
-│   │   │       ├── webhook.go
-│   │   │       └── in_app.go
-│   │   ├── handler/
-│   │   └── event/
-│   ├── migrations/
-│   ├── Dockerfile
-│   ├── go.mod
-│   └── README.md
-│
-└── monitor/                    # 监控服务
-    ├── cmd/
-    ├── internal/
-    │   ├── config/
-    │   ├── domain/
-    │   ├── service/
-    │   │   ├── metrics_service.go
-    │   │   ├── log_service.go
-    │   │   ├── alert_service.go
-    │   │   └── dashboard_service.go
-    │   └── handler/
-    ├── migrations/
-    ├── Dockerfile
-    ├── go.mod
-    └── README.md
-```
+```text
+deploy/docker/
+├── docker-compose.infra.yml      # 必需基础设施与一次性 migrate 服务
+├── docker-compose.dev.yml        # gateway + nginx，支持 Docker-outside-of-Docker
+├── init-scripts/                 # 数据库初始化脚本
+└── nginx/                        # 反向代理配置
 
----
-
-## 5. 后台工作者 `apps/workers/`
-
-```
-apps/workers/
-├── doc-processor/              # 文档处理 Worker
-│   ├── main.go
-│   ├── processor.go
-│   ├── Dockerfile
-│   └── go.mod
-│
-├── embedding-worker/           # Embedding Worker
-│   ├── main.go
-│   ├── worker.go
-│   ├── Dockerfile
-│   └── go.mod
-│
-├── billing-worker/             # 计费聚合 Worker
-│   ├── main.go
-│   ├── aggregator.go
-│   ├── Dockerfile
-│   └── go.mod
-│
-└── notification-worker/        # 通知发送 Worker
-    ├── main.go
-    ├── sender.go
-    ├── Dockerfile
-    └── go.mod
-```
-
----
-
-## 6. 共享包 `packages/`
-
-```
-packages/
-├── proto/                      # Protobuf 定义
-│   ├── buf.yaml
-│   ├── buf.gen.yaml
-│   ├── user/
-│   │   └── v1/
-│   │       ├── user.proto
-│   │       ├── auth.proto
-│   │       └── org.proto
-│   ├── chat/
-│   │   └── v1/
-│   │       ├── chat.proto
-│   │       ├── conversation.proto
-│   │       └── prompt.proto
-│   ├── agent/
-│   │   └── v1/
-│   │       ├── agent.proto
-│   │       └── run.proto
-│   ├── rag/
-│   │   └── v1/
-│   │       ├── knowledge.proto
-│   │       ├── document.proto
-│   │       └── search.proto
-│   ├── workflow/
-│   │   └── v1/
-│   │       └── workflow.proto
-│   ├── mcp/
-│   │   └── v1/
-│   │       └── mcp.proto
-│   ├── deploy/
-│   │   └── v1/
-│   │       └── deploy.proto
-│   ├── billing/
-│   │   └── v1/
-│   │       └── billing.proto
-│   └── common/
-│       └── v1/
-│           ├── pagination.proto
-│           ├── error.proto
-│           └── types.proto
-│
-├── go-common/                  # Go 公共库
-│   ├── go.mod
-│   ├── logger/                 # 日志封装
-│   │   ├── logger.go
-│   │   └── zap.go
-│   ├── config/                 # 配置加载
-│   │   ├── config.go
-│   │   └── viper.go
-│   ├── database/               # 数据库连接
-│   │   ├── postgres.go
-│   │   └── migrate.go
-│   ├── cache/                  # Redis 封装
-│   │   └── redis.go
-│   ├── auth/                   # JWT 工具
-│   │   ├── jwt.go
-│   │   └── password.go
-│   ├── errors/                 # 统一错误
-│   │   └── errors.go
-│   ├── middleware/              # 通用中间件
-│   │   ├── recovery.go
-│   │   └── logging.go
-│   ├── event/                  # 事件封装
-│   │   ├── kafka.go
-│   │   └── producer.go
-│   ├── storage/                # MinIO 封装
-│   │   └── minio.go
-│   ├── telemetry/              # OpenTelemetry
-│   │   ├── otel.go
-│   │   └── tracer.go
-│   └── validator/              # 验证器
-│       └── validator.go
-│
-├── ts-common/                  # TypeScript 公共库
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── src/
-│       ├── api/                # API 客户端生成
-│       ├── types/              # 共享类型
-│       ├── utils/              # 工具函数
-│       └── constants/          # 常量
-│
-├── ui/                         # UI 组件库 (Shadcn)
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tailwind.config.ts
-│   └── src/
-│       ├── components/
-│       │   ├── ui/             # Shadcn 基础组件
-│       │   ├── forms/          # 表单组件
-│       │   ├── data/           # 数据展示组件
-│       │   └── layout/         # 布局组件
-│       ├── hooks/
-│       ├── utils/
-│       └── styles/
-│
-└── config/                     # 共享配置
-    ├── eslint/
-    │   └── base.js
-    ├── prettier/
-    │   └── base.js
-    └── tsconfig/
-        ├── base.json
-        ├── nextjs.json
-        └── node.json
-```
-
----
-
-## 7. 部署配置 `deploy/`
-
-```
-deploy/
-├── docker/
-│   ├── docker-compose.yml      # 生产级 Docker Compose
-│   ├── docker-compose.dev.yml  # 开发环境
-│   ├── docker-compose.infra.yml # 基础设施
-│   └── nginx/
-│       └── nginx.conf
-│
-├── helm/
-│   └── omnidev/
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       ├── values-staging.yaml
-│       ├── values-production.yaml
-│       └── templates/
-│           ├── _helpers.tpl
-│           ├── gateway/
-│           ├── services/
-│           ├── workers/
-│           ├── ingress/
-│           ├── configmap/
-│           ├── secret/
-│           └── hpa/
-│
-├── terraform/
-│   ├── modules/
-│   │   ├── vpc/
-│   │   ├── eks/
-│   │   ├── rds/
-│   │   ├── elasticache/
-│   │   ├── s3/
-│   │   └── opensearch/
-│   ├── environments/
-│   │   ├── staging/
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   └── outputs.tf
-│   │   └── production/
-│   │       ├── main.tf
-│   │       ├── variables.tf
-│   │       └── outputs.tf
-│   └── backend.tf
-│
-└── k8s/
-    ├── base/
-    │   ├── kustomization.yaml
-    │   ├── namespace.yaml
-    │   └── network-policy.yaml
-    ├── overlays/
-    │   ├── staging/
-    │   └── production/
-    └── sandbox/
-        ├── runtime-python.yaml
-        ├── runtime-go.yaml
-        ├── runtime-node.yaml
-        └── network-policy.yaml
-```
-
----
-
-## 8. 工具脚本 `scripts/`
-
-```
 scripts/
-├── setup.sh                    # 环境初始化
-├── migrate.sh                  # 数据库迁移
-├── seed.sh                     # 种子数据
-├── gen-proto.sh                # Protobuf 代码生成
-├── gen-swagger.sh              # Swagger 文档生成
-├── lint.sh                     # 代码检查
-├── test.sh                     # 运行测试
-├── build.sh                    # 构建所有服务
-└── deploy.sh                   # 部署脚本
+└── setup.sh                      # 检查依赖、准备环境并执行迁移
 ```
 
----
+Compose 是当前的部署事实来源。不要把已经不存在的 Helm Chart、Terraform 模块或 Kubernetes manifests 写回启动说明。
 
-## 9. 文档 `docs/`
+## 7. 文档结构
 
-```
+```text
 docs/
-├── architecture/               # 架构文档（本目录）
+├── architecture/
 │   ├── 00-EXECUTIVE-SUMMARY.md
 │   ├── 01-REQUIREMENTS-ANALYSIS.md
 │   ├── 02-FEATURE-BOUNDARY.md
@@ -876,40 +171,8 @@ docs/
 │   ├── 07-DIRECTORY-STRUCTURE.md
 │   ├── 08-DEVELOPMENT-STANDARDS.md
 │   └── 09-MILESTONE-PLAN.md
-│
-├── api/                        # API 文档
-│   ├── openapi.yaml            # OpenAPI 规范
-│   └── grpc/                   # gRPC 文档
-│
-├── guides/                     # 使用指南
-│   ├── getting-started.md
-│   ├── deployment.md
-│   └── contributing.md
-│
-└── adr/                        # 架构决策记录
-    ├── 001-monorepo.md
-    ├── 002-go-backend.md
-    └── ...
+└── features/
+    └── file-upload-and-multimodal.md
 ```
 
----
-
-## 10. 开发工具 `tools/`
-
-```
-tools/
-├── cli/                        # CLI 工具
-│   ├── cmd/
-│   │   ├── main.go
-│   │   ├── init.go
-│   │   ├── dev.go
-│   │   ├── deploy.go
-│   │   └── config.go
-│   ├── go.mod
-│   └── README.md
-│
-└── codegen/                    # 代码生成器
-    ├── proto-gen/              # Protobuf 生成
-    ├── repo-gen/               # Repository 代码生成
-    └── api-gen/                # API 客户端生成
-```
+架构文档描述当前代码；规划项必须明确标注“规划中”，已放弃项标注“已取消/已移除”。公开文档站位于独立的 `omnidev-docs` 仓库，修改平台能力或配置时需要同步更新中英文页面。

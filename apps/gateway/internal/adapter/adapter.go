@@ -93,8 +93,8 @@ type ToolFunction struct {
 
 // ToolCall represents a tool call from the model.
 type ToolCall struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
 	Function struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
@@ -120,12 +120,24 @@ type Usage struct {
 
 // ChatStreamChunk represents a streaming chunk.
 type ChatStreamChunk struct {
-	ID     string `json:"id"`
-	Delta  string `json:"delta"`
-	Model  string `json:"model"`
-	Type   string `json:"type,omitempty"` // "reasoning" or empty for content
-	Finish string `json:"finish,omitempty"`
-	Usage  *Usage `json:"usage,omitempty"`
+	ID        string     `json:"id"`
+	Delta     string     `json:"delta"`
+	Model     string     `json:"model"`
+	Type      string     `json:"type,omitempty"` // "reasoning" or empty for content
+	Finish    string     `json:"finish,omitempty"`
+	Usage     *Usage     `json:"usage,omitempty"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+}
+
+// ToolSupporter reports whether an adapter sends function-calling requests.
+type ToolSupporter interface {
+	SupportsTools() bool
+}
+
+// SupportsTools reports whether the adapter can send tool definitions to the model.
+func SupportsTools(a Adapter) bool {
+	supporter, ok := a.(ToolSupporter)
+	return ok && supporter.SupportsTools()
 }
 
 // Adapter defines the interface for AI model providers.
@@ -197,15 +209,15 @@ func (r *Registry) Providers() []string {
 
 // ImageRequest represents an image generation request.
 type ImageRequest struct {
-	Model          string  `json:"model"`
-	Prompt         string  `json:"prompt"`
-	N              int     `json:"n,omitempty"`               // Number of images to generate
-	Size           string  `json:"size,omitempty"`            // e.g. "1024x1024", "768x1344"
-	Quality        string  `json:"quality,omitempty"`         // "standard", "hd"
-	Style          string  `json:"style,omitempty"`           // "vivid", "natural"
-	ResponseFormat string  `json:"response_format,omitempty"` // "url", "b64_json"
-	Watermark      *bool   `json:"watermark_enabled,omitempty"`
-	UserID         string  `json:"user_id,omitempty"`
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	N              int    `json:"n,omitempty"`               // Number of images to generate
+	Size           string `json:"size,omitempty"`            // e.g. "1024x1024", "768x1344"
+	Quality        string `json:"quality,omitempty"`         // "standard", "hd"
+	Style          string `json:"style,omitempty"`           // "vivid", "natural"
+	ResponseFormat string `json:"response_format,omitempty"` // "url", "b64_json"
+	Watermark      *bool  `json:"watermark_enabled,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
 }
 
 // ImageData represents a single generated image.

@@ -27,8 +27,14 @@ import (
 	kengine "github.com/omnidev/knowledge-engine"
 
 	"github.com/omnidev/gateway/internal/adapter"
+	agentexecutor "github.com/omnidev/gateway/internal/agent/executor"
+	agenthandler "github.com/omnidev/gateway/internal/agent/handler"
+	agentplanner "github.com/omnidev/gateway/internal/agent/planner"
+	agentrepository "github.com/omnidev/gateway/internal/agent/repository"
+	agentservice "github.com/omnidev/gateway/internal/agent/service"
 	"github.com/omnidev/gateway/internal/handler"
 	knowledgehandler "github.com/omnidev/gateway/internal/knowledge"
+	"github.com/omnidev/gateway/internal/mcp"
 	"github.com/omnidev/gateway/internal/repository"
 	"github.com/omnidev/gateway/internal/router"
 	"github.com/omnidev/gateway/internal/service"
@@ -169,7 +175,18 @@ func main() {
 		logger.Log.Fatal("Failed to initialize knowledge engine", zap.Error(err))
 	}
 
-	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, knowledgeEngine.SearchService())
+	// External MCP tools for chat. Unreachable servers are skipped.
+	mcpManager := mcp.NewManager(cfg.MCP)
+	if cfg.MCP.Enabled {
+		mcpCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := mcpManager.Start(mcpCtx); err != nil {
+			logger.Log.Warn("Some MCP servers are unavailable", zap.Error(err))
+		}
+		cancel()
+		logger.Log.Info("MCP tools initialized", zap.Int("tools", len(mcpManager.Tools())))
+	}
+
+	chatService := service.NewChatService(convRepository, msgRepository, modelRepository, adapterRegistry, adapterResolver, userAIConfigRepo, redisClient, cfg.AI.DefaultModel, attRepository, minioClient, docParser, knowledgeEngine.SearchService(), mcpManager)
 	convService := service.NewConversationService(convRepository, msgRepository, attRepository)
 	imageService := service.NewImageService(adapterResolver, attRepository, convRepository, msgRepository, minioClient)
 	userAIConfigService := service.NewUserAIConfigService(userAIConfigRepo, encryptor)
@@ -194,6 +211,31 @@ func main() {
 	knowledgeKBHandler := knowledgehandler.NewKnowledgeBaseHandler(knowledgeEngine.KnowledgeBaseService())
 	knowledgeSearchHandler := knowledgehandler.NewSearchHandler(knowledgeEngine.SearchService())
 
+	// Background agent (Docker sandbox)
+	var agentHandler *agenthandler.AgentHandler
+	if cfg.Sandbox.Enabled {
+		sandboxMgr := agentexecutor.NewSandboxManager(cfg.Sandbox)
+		agentPlanner := agentplanner.NewPlanner(cfg.Agent, cfg.AI)
+		agentExecutor := agentexecutor.NewExecutor(sandboxMgr, agentPlanner)
+		agentService := agentservice.NewAgentService(
+			agentrepository.NewAgentRepository(db.Pool),
+			agentrepository.NewRunRepository(db.Pool),
+			agentrepository.NewStepRepository(db.Pool),
+			agentExecutor,
+			agentPlanner,
+			sandboxMgr.WorkspaceRoot(),
+		)
+		agentHandler = agenthandler.NewAgentHandler(agentService)
+		logger.Log.Info("Agent sandbox enabled",
+			zap.String("workspace_root", sandboxMgr.WorkspaceRoot()),
+			zap.String("network", cfg.Sandbox.Network),
+			zap.String("memory", cfg.Sandbox.MemoryLimit),
+			zap.String("cpus", cfg.Sandbox.CPULimit),
+		)
+	} else {
+		logger.Log.Info("Agent sandbox disabled; agent routes are not registered")
+	}
+
 	// Setup Gin
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -217,7 +259,7 @@ func main() {
 	}
 
 	// Setup routes
-	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler, knowledgeKBHandler, knowledgeSearchHandler)
+	router.Setup(r, jwtManager, healthHandler, authHandler, chatHandler, userAIConfigHandler, uploadHandler, knowledgeKBHandler, knowledgeSearchHandler, agentHandler)
 
 	// HTTP server
 	addr := fmt.Sprintf(":%d", cfg.App.Port)

@@ -224,7 +224,7 @@ export default function SettingsPage() {
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm font-medium text-green-800">API Key Created!</p>
               <p className="text-xs text-green-600 font-mono mt-1 break-all">{createdKey}</p>
-              <p className="text-xs text-green-600 mt-1">Copy this key now - it won't be shown again.</p>
+              <p className="text-xs text-green-600 mt-1">Copy this key now - it won&apos;t be shown again.</p>
               <Button variant="outline" size="sm" className="mt-2" onClick={() => setCreatedKey(null)}>
                 Dismiss
               </Button>
@@ -306,50 +306,6 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Billing */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Billing</CardTitle>
-          <CardDescription>Manage your subscription and billing</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 border rounded-lg">
-            <div>
-              <p className="font-medium">Free Plan</p>
-              <p className="text-sm text-muted-foreground">$10 credit remaining</p>
-            </div>
-            <Button>Upgrade to Pro</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Notifications</CardTitle>
-          <CardDescription>Configure notification preferences</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { label: "Email notifications", desc: "Receive email for important updates" },
-            { label: "Agent completion", desc: "Notify when agent tasks complete" },
-            { label: "Deployment status", desc: "Notify on deploy success/failure" },
-            { label: "Billing alerts", desc: "Notify when approaching budget limit" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between p-3 border rounded-lg">
-              <div>
-                <p className="text-sm font-medium">{item.label}</p>
-                <p className="text-xs text-muted-foreground">{item.desc}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
-                <div className="w-9 h-5 bg-muted peer-focus:ring-2 peer-focus:ring-ring rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary" />
-              </label>
-            </div>
-          ))}
         </CardContent>
       </Card>
 

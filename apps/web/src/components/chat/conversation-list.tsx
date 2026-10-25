@@ -1,6 +1,6 @@
 "use client";
 
-import { cn, formatRelativeTime, truncate } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import type { Conversation } from "@/lib/api/client";
 
 interface ConversationListProps {

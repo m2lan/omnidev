@@ -1,6 +1,7 @@
 # =============================================================================
-# OmniDev AI Platform — CD Pipeline (Staging)
-# Deploys to staging on push to develop branch
+# OmniDev CD — build and publish the gateway image on develop
+# Deployment is intentionally manual: run the image with
+# deploy/docker/docker-compose.infra.yml + docker-compose.dev.yml.
 # =============================================================================
 
 name: CD Staging
@@ -18,27 +19,21 @@ env:
   IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Build and Push Docker Images
-  # ---------------------------------------------------------------------------
   build-push:
-    name: Build & Push
+    name: Build & Push Gateway
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
-    strategy:
-      matrix:
-        service:
-          - gateway
-          - user
-          - chat
-          - agent
-          - rag
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: omnidev
+      - uses: actions/checkout@v4
+        with:
+          repository: m2lan/knowledge-engine
+          path: knowledge-engine
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -54,7 +49,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/gateway
           tags: |
             type=sha,prefix=
             type=ref,event=branch
@@ -63,7 +58,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: apps/services/${{ matrix.service }}/Dockerfile
+          file: omnidev/apps/gateway/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -73,38 +68,3 @@ jobs:
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # ---------------------------------------------------------------------------
-  # Deploy to Staging
-  # ---------------------------------------------------------------------------
-  deploy:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: build-push
-    environment: staging
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
-
-      - name: Deploy with Helm
-        run: |
-          helm upgrade --install omnidev deploy/helm/omnidev \
-            -f deploy/helm/values-staging.yaml \
-            --set image.tag=${{ github.sha }} \
-            --namespace omnidev-staging \
-            --create-namespace \
-            --wait \
-            --timeout 5m
-
-      - name: Verify deployment
-        run: |
-          kubectl rollout status deployment/omnidev-gateway -n omnidev-staging --timeout=3m
-          kubectl get pods -n omnidev-staging

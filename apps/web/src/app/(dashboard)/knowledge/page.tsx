@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, type KnowledgeBase } from "@/lib/api/client";
+import { api, type KnowledgeBase, type SearchResult } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ export default function KnowledgePage() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<unknown[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,8 +120,8 @@ export default function KnowledgePage() {
 
           {searchResults.length > 0 && (
             <div className="mt-4 space-y-2">
-              {searchResults.map((result: any, i) => (
-                <div key={i} className="rounded-lg border p-3">
+              {searchResults.map((result) => (
+                <div key={result.chunk.id} className="rounded-lg border p-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-muted-foreground">Score: {result.score?.toFixed(3)}</span>
                     <span className="text-xs bg-muted px-2 py-0.5 rounded">{result.source}</span>

@@ -11,8 +11,6 @@ const navigation = [
   { name: "Chat", href: "/chat", icon: "💬" },
   { name: "Agents", href: "/agent", icon: "🤖" },
   { name: "Knowledge", href: "/knowledge", icon: "📚" },
-  { name: "IDE", href: "/ide", icon: "💻" },
-  { name: "Workflow", href: "/workflow", icon: "⚡" },
 ];
 
 const bottomNavigation = [

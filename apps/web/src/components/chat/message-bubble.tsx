@@ -118,7 +118,6 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
 
   // Check if this is an image generation message
   const isImageGeneration = !isUser && message.metadata?.type === "image-generation";
-  const hasImageAttachments = !isUser && message.attachments?.some((att) => att.mime_type.startsWith("image/"));
 
   // Truncate long messages for performance
   const MAX_LENGTH = 3000;
@@ -208,7 +207,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: MessageBub
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  code({ className, children, node, ...props }) {
+                  code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || "");
                     const isInline = !match;
                     const language = match ? match[1] : "";

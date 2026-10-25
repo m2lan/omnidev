@@ -1,637 +1,128 @@
-# OmniDev AI Platform — 开发规范
+# OmniDev — 开发规范（当前仓库）
 
-## 1. Git 工作流
+## 1. 仓库与变更边界
 
-### 1.1 分支策略
-
-```
-main (生产)
-  ↑
-  ├── release/v1.0 (发布分支)
-  │     ↑
-  │     └── develop (开发主线)
-  │           ↑
-  │           ├── feature/chat-module (功能分支)
-  │           ├── feature/agent-system
-  │           └── bugfix/fix-login
-  │
-  └── hotfix/fix-critical-bug (热修复)
+```text
+omnidev/
+├── apps/gateway/          # 唯一 Go 后端：auth、chat、knowledge、agent
+├── apps/web/              # Next.js 前端
+├── packages/go-common/    # Go 共享库
+├── deploy/docker/         # Docker Compose 与 Nginx 配置
+├── docs/                  # 文档
+└── Makefile               # 统一开发命令
+../knowledge-engine/       # 同级、独立可复用的 Go module
 ```
 
-| 分支 | 命名规则 | 生命周期 | 合并目标 |
-|------|----------|----------|----------|
-| main | main | 永久 | - |
-| develop | develop | 永久 | main (通过 release) |
-| 功能分支 | feature/{模块}-{描述} | 临时 | develop |
-| 修复分支 | bugfix/{issue}-{描述} | 临时 | develop |
-| 热修复 | hotfix/{描述} | 临时 | main + develop |
-| 发布分支 | release/v{版本} | 临时 | main |
+- 后端业务优先放入 `apps/gateway/internal` 对应模块，不新建 `apps/services/*`。
+- 跨后端模块复用的基础能力放入 `packages/go-common`；知识领域通用能力放入 sibling `knowledge-engine`。
+- 不为单个功能引入新的网络服务、Kafka 事件、protobuf/wire 生成或 Kubernetes manifests。
+- 修改功能时同步更新真实路由、迁移和文档；不要把规划能力写成已交付能力。
 
-### 1.2 Commit 规范
+## 2. Git 与提交
 
-**格式：** `<type>(<scope>): <description>`
+- 推荐从短期功能/修复分支提交 PR，避免直接在主分支开发。
+- Commit 使用 `<type>(<scope>): <description>`；常用 type 为 `feat/fix/docs/refactor/perf/test/build/ci/chore`。
+- scope 使用真实模块，如 `gateway`、`web`、`common`、`knowledge`、`agent`、`chat`、`deploy`、`docs`。
+- 一个提交聚焦一个逻辑变更，不混入无关格式化、生成物、密钥或本地 `.env`。
+- PR 说明变更原因、影响范围和验证命令；前端交互变化附必要截图，数据库变化说明迁移与回滚。
 
-```
-类型 (type):
-  feat      新功能
-  fix       修复
-  docs      文档
-  style     格式（不影响代码运行）
-  refactor  重构
-  perf      性能优化
-  test      测试
-  build     构建系统
-  ci        CI/CD
-  chore     其他杂项
+## 3. Go 规范
 
-范围 (scope):
-  gateway, chat, agent, rag, ide, workflow, mcp, deploy, billing, admin
-  ui, proto, common, infra
+### 3.1 分层与依赖
 
-示例:
-  feat(chat): 添加多模型切换功能
-  fix(auth): 修复 JWT 过期后未刷新的问题
-  docs(api): 更新 Chat API 文档
-  refactor(rag): 重构检索器接口
-  perf(query): 优化消息列表查询性能
-```
+- 沿用 `handler → service → repository` 和独立 `domain`；Agent 代码位于 `internal/agent` 的对应子包。
+- HTTP 参数解析/响应在 handler，业务规则与所有权校验在 service，SQL 在 repository。
+- 在 `cmd/gateway/main.go` 显式组装依赖；通过构造函数传入依赖，不在业务包中读取全局环境配置。
+- 跨模块调用使用进程内接口或具体 service，不添加内部 REST/gRPC 跳转。
+- `context.Context` 作为调用链首个参数； goroutine 需明确 context 生命周期、取消和错误记录。
 
-### 1.3 PR 规范
+### 3.2 代码与错误
 
-**标题：** 与 commit 格式一致
+- 提交前运行 `gofmt`；包名短小，导出标识符有必要注释，避免无意义包装和重复抽象。
+- 错误使用 `%w` 或项目 `go-common/errors` 包装，保留底层原因；不向用户返回 SQL、密钥或堆栈。
+- 日志使用 zap 结构化字段，至少带 request ID、run ID 或资源 ID 等上下文；禁止记录密码、JWT、provider Key 和附件内容。
+- 配置通过 `go-common/config` 增加字段、默认值和环境变量映射；复杂结构（如 MCP servers）明确解析规则。
 
-**模板：**
-```markdown
-## 变更说明
-简述本次变更的内容和原因。
+### 3.3 数据库
 
-## 变更类型
-- [ ] 新功能 (feat)
-- [ ] 修复 (fix)
-- [ ] 重构 (refactor)
-- [ ] 文档 (docs)
-- [ ] 其他
+- 使用 pgx/v5 和参数化 SQL，禁止字符串拼接用户输入；动态标识符必须严格白名单校验。
+- 查询列表必须分页并限制页大小；按 repository 现有约定处理软删除、排序和 `user_id` 所有权。
+- 多表写入若要求原子性，使用事务；外部 AI、MinIO、Docker 调用不要无条件包在长事务中。
+- JSONB 用于确有动态结构的配置/元数据，固定查询字段仍使用明确列和索引。
+- 消息表是分区表，涉及主键、唯一约束或分区维护时先阅读 006 迁移。
 
-## 测试
-- [ ] 单元测试通过
-- [ ] 集成测试通过
-- [ ] 手动测试通过
+## 4. TypeScript / React 规范
 
-## 截图/录屏（如适用）
+- 组件使用 PascalCase，hooks 使用 `useXxx`，工具函数使用 camelCase；类型和 API 输入输出避免 `any`。
+- 优先复用 `apps/web/src` 现有 API client、组件和类型，不在页面中重复拼装 fetch、认证头和错误处理。
+- 服务端数据优先使用 TanStack Query；仅把真正的本地 UI 状态放入 Zustand 或组件 state。
+- 表单沿用 React Hook Form + Zod；在边界校验外部数据，模型流式增量与完整消息要区分处理。
+- 使用 Tailwind 和现有 UI 组件保持样式一致；交互需覆盖 loading、empty、error 和取消状态。
+- 不重新引入 Monaco IDE 或 workflow 画布；Agent 页面以配置、run 轮询、步骤和取消为边界。
 
-## 关联 Issue
-Closes #123
-```
+## 5. API 约定
 
----
+- 业务 API 位于 `/api/v1`，使用名词资源和合适 HTTP 方法；路由统一在 `internal/router/router.go` 注册。
+- 除认证/健康入口外默认使用 JWT；service 必须校验资源所有权，不能只依赖隐藏前端按钮。
+- 单资源响应沿用 `{"data": ...}`；分页响应使用 `meta.total_count/page/page_size`，查询参数为 `page/page_size`。
+- 错误响应沿用 `error.code/message/detail` 及可用的 `request_id`；未定义路由返回结构化 404。
+- 聊天流式接口使用 SSE：`POST /conversations/:id/messages/stream`。不要为 Agent 进度新增 WebSocket，当前客户端通过 run API 轮询。
+- 破坏性 API 修改需同步 Web client 和文档；不能仅修改 handler 而遗漏路由或类型。
 
-## 2. Go 编码规范
+## 6. 常用命令
 
-### 2.1 项目分层
+在仓库根目录执行：
 
-```
-cmd/          → 入口点，仅组装依赖
-internal/
-  config/     → 配置结构体和加载
-  domain/     → 领域模型（纯结构体 + 业务方法）
-  repository/ → 数据访问接口 + 实现
-  service/    → 业务逻辑（依赖 repository 接口）
-  handler/    → gRPC/HTTP 处理器（调用 service）
-  event/      → 事件发布和消费
-migrations/   → SQL 迁移文件
-```
+```bash
+# 后端
+make build
+make test
+make test-race
+make vet
+make lint
+make fmt
 
-### 2.2 依赖注入
+go build ./apps/gateway/... ./packages/go-common/...
+go test ./apps/gateway/... ./packages/go-common/... -count=1
+SANDBOX_INTEGRATION_TEST=1 go test ./apps/gateway/internal/agent/executor -run TestSandboxExecuteDocker -v
 
-使用 **Wire** 进行编译时依赖注入：
+# 前端
+pnpm --filter web dev
+pnpm --filter web build
+pnpm --filter web lint
+pnpm --filter web typecheck
+pnpm --filter web test
 
-```go
-// wire.go
-func InitializeApp(cfg *config.Config) (*App, error) {
-    wire.Build(
-        // 基础设施
-        NewPostgresDB,
-        NewRedisClient,
-        NewKafkaProducer,
-
-        // Repository
-        NewUserRepository,
-        NewConversationRepository,
-
-        // Service
-        NewAuthService,
-        NewChatService,
-
-        // Handler
-        NewAuthHandler,
-        NewChatHandler,
-
-        // App
-        NewApp,
-    )
-    return nil, nil
-}
+# 本地环境
+make setup
+make dev-infra
+make run-gateway
+make web-dev
+make sandbox-images
 ```
 
-### 2.3 错误处理
-
-**统一错误类型：**
-```go
-// packages/go-common/errors/errors.go
-type AppError struct {
-    Code    int    `json:"code"`
-    Message string `json:"message"`
-    Detail  string `json:"detail,omitempty"`
-    Err     error  `json:"-"`
-}
-
-func (e *AppError) Error() string { return e.Message }
-
-// 预定义错误
-var (
-    ErrNotFound     = &AppError{Code: 404, Message: "resource not found"}
-    ErrUnauthorized = &AppError{Code: 401, Message: "unauthorized"}
-    ErrForbidden    = &AppError{Code: 403, Message: "forbidden"}
-    ErrValidation   = &AppError{Code: 400, Message: "validation error"}
-    ErrInternal     = &AppError{Code: 500, Message: "internal error"}
-)
-```
-
-**错误包装：**
-```go
-user, err := s.userRepo.GetByID(ctx, id)
-if err != nil {
-    return nil, errors.Wrap(err, "failed to get user")
-}
-```
-
-### 2.4 日志规范
-
-```go
-// 使用结构化日志
-logger.Info("Chat completion started",
-    zap.String("user_id", userID),
-    zap.String("model", modelID),
-    zap.Int("message_count", len(messages)),
-)
-
-logger.Error("Failed to call AI model",
-    zap.String("model", modelID),
-    zap.Error(err),
-    zap.Duration("latency", elapsed),
-)
-```
-
-**日志级别使用：**
-| 级别 | 用途 |
-|------|------|
-| Debug | 开发调试，生产环境关闭 |
-| Info | 正常业务事件 |
-| Warn | 可恢复的异常 |
-| Error | 需要关注的错误 |
-| Fatal | 无法恢复，进程退出 |
-
-### 2.5 gRPC 接口规范
-
-```protobuf
-// 请求命名：{Resource}{Action}Request
-// 响应命名：{Resource}{Action}Response
-// 空响应用 google.protobuf.Empty
-
-service ChatService {
-    // 创建会话
-    rpc CreateConversation(CreateConversationRequest) returns (Conversation);
-
-    // 列出会话（分页）
-    rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
-
-    // 获取单个
-    rpc GetConversation(GetConversationRequest) returns (Conversation);
-
-    // 更新
-    rpc UpdateConversation(UpdateConversationRequest) returns (Conversation);
-
-    // 删除
-    rpc DeleteConversation(DeleteConversationRequest) returns (google.protobuf.Empty);
-
-    // 流式聊天
-    rpc ChatStream(ChatStreamRequest) returns (stream ChatChunk);
-}
-
-// 分页
-message ListConversationsRequest {
-    int32 page_size = 1;
-    string page_token = 2;
-    string filter = 3;
-    string sort_by = 4;
-}
-
-message ListConversationsResponse {
-    repeated Conversation conversations = 1;
-    string next_page_token = 2;
-    int32 total_count = 3;
-}
-```
-
-### 2.6 数据库规范
-
-**迁移文件命名：**
-```
-migrations/
-├── 001_create_users.up.sql
-├── 001_create_users.down.sql
-├── 002_create_conversations.up.sql
-├── 002_create_conversations.down.sql
-└── ...
-```
-
-**SQL 编写规范：**
-```sql
--- 表名：snake_case，复数形式
--- 列名：snake_case
--- 主键：id (UUID)
--- 外键：{table}_id
--- 索引：idx_{table}_{columns}
--- 唯一索引：uniq_{table}_{columns}
-
-CREATE TABLE users (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email         VARCHAR(255) NOT NULL,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_users_email ON users(email);
-```
-
-**Repository 模式：**
-```go
-// 接口定义（domain 层）
-type UserRepository interface {
-    Create(ctx context.Context, user *User) error
-    GetByID(ctx context.Context, id uuid.UUID) (*User, error)
-    GetByEmail(ctx context.Context, email string) (*User, error)
-    Update(ctx context.Context, user *User) error
-    Delete(ctx context.Context, id uuid.UUID) error
-    List(ctx context.Context, params ListParams) ([]*User, int, error)
-}
-
-// 实现（repository 层）
-type userRepository struct {
-    db *pgxpool.Pool
-}
-
-func NewUserRepository(db *pgxpool.Pool) UserRepository {
-    return &userRepository{db: db}
-}
-
-func (r *userRepository) Create(ctx context.Context, user *User) error {
-    query := `INSERT INTO users (id, email, nickname, password_hash)
-              VALUES ($1, $2, $3, $4)`
-    _, err := r.db.Exec(ctx, query, user.ID, user.Email, user.Nickname, user.PasswordHash)
-    return err
-}
-```
-
----
-
-## 3. TypeScript/React 编码规范
-
-### 3.1 文件组织
-
-```
-组件文件：PascalCase (UserProfile.tsx)
-Hook 文件：camelCase，use 前缀 (useChat.ts)
-工具文件：camelCase (formatDate.ts)
-类型文件：camelCase (api.ts)
-常量文件：UPPER_SNAKE_CASE (ROUTES.ts)
-```
-
-### 3.2 组件规范
-
-```tsx
-// 组件使用函数式组件 + TypeScript
-interface UserCardProps {
-  user: User;
-  onSelect?: (user: User) => void;
-  variant?: 'default' | 'compact';
-}
-
-export function UserCard({ user, onSelect, variant = 'default' }: UserCardProps) {
-  const handleClick = useCallback(() => {
-    onSelect?.(user);
-  }, [user, onSelect]);
-
-  return (
-    <Card onClick={handleClick} className={cn(variant === 'compact' && 'p-2')}>
-      <Avatar src={user.avatarUrl} fallback={user.nickname[0]} />
-      <div>
-        <h3>{user.nickname}</h3>
-        <p className="text-muted-foreground">{user.email}</p>
-      </div>
-    </Card>
-  );
-}
-```
-
-### 3.3 状态管理
-
-```typescript
-// stores/chat-store.ts
-import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
-
-interface ChatState {
-  conversations: Conversation[];
-  activeId: string | null;
-  isLoading: boolean;
-
-  // Actions
-  setActive: (id: string) => void;
-  addConversation: (conv: Conversation) => void;
-  fetchConversations: () => Promise<void>;
-}
-
-export const useChatStore = create<ChatState>()(
-  devtools(
-    persist(
-      (set, get) => ({
-        conversations: [],
-        activeId: null,
-        isLoading: false,
-
-        setActive: (id) => set({ activeId: id }),
-
-        addConversation: (conv) =>
-          set((state) => ({
-            conversations: [conv, ...state.conversations],
-          })),
-
-        fetchConversations: async () => {
-          set({ isLoading: true });
-          try {
-            const data = await chatApi.listConversations();
-            set({ conversations: data.conversations });
-          } finally {
-            set({ isLoading: false });
-          }
-        },
-      }),
-      { name: 'chat-store' }
-    )
-  )
-);
-```
-
-### 3.4 API 调用
-
-```typescript
-// 使用 TanStack Query
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-
-export function useConversations() {
-  return useQuery({
-    queryKey: ['conversations'],
-    queryFn: () => chatApi.listConversations(),
-    staleTime: 30_000,  // 30 秒
-  });
-}
-
-export function useCreateConversation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateConversationInput) =>
-      chatApi.createConversation(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    },
-  });
-}
-```
-
----
-
-## 4. API 设计规范
-
-### 4.1 RESTful 规范
-
-```
-资源命名：复数名词，kebab-case
-嵌套资源：最多 2 层
-分页：page_size + page_token
-排序：sort_by=field:asc|desc
-过滤：filter=field:value
-搜索：q=keyword
-
-示例：
-GET    /api/v1/conversations
-POST   /api/v1/conversations
-GET    /api/v1/conversations/{id}
-PATCH  /api/v1/conversations/{id}
-DELETE /api/v1/conversations/{id}
-GET    /api/v1/conversations/{id}/messages
-POST   /api/v1/conversations/{id}/messages
-```
-
-### 4.2 响应格式
-
-```json
-// 成功响应
-{
-  "data": { ... },
-  "meta": {
-    "page_size": 20,
-    "next_page_token": "xxx",
-    "total_count": 100
-  }
-}
-
-// 错误响应
-{
-  "error": {
-    "code": 400,
-    "message": "validation error",
-    "detail": "email is required",
-    "request_id": "req_abc123"
-  }
-}
-
-// 流式响应 (SSE)
-data: {"type":"chunk","content":"Hello"}
-data: {"type":"chunk","content":" world"}
-data: {"type":"done","usage":{"input_tokens":10,"output_tokens":2}}
-```
-
-### 4.3 版本控制
-
-```
-URL 版本：/api/v1/*, /api/v2/*
-Header 版本：Accept-Version: 2026-01-01
-废弃通知：Deprecation 头 + 迁移指南
-```
-
----
-
-## 5. 测试规范
-
-### 5.1 测试策略
-
-| 层级 | 覆盖率目标 | 工具 | 速度 |
-|------|-----------|------|------|
-| 单元测试 | > 80% | go test / Vitest | 毫秒 |
-| 集成测试 | 核心流程 | TestContainers | 秒 |
-| E2E 测试 | 关键路径 | Playwright | 分钟 |
-| 性能测试 | API 端点 | k6 | 分钟 |
-
-### 5.2 Go 测试规范
-
-```go
-// 文件命名：*_test.go
-// 函数命名：Test{Function}_{Scenario}_{Expected}
-
-func TestUserService_Create_Success(t *testing.T) {
-    // Arrange
-    repo := NewMockUserRepository()
-    svc := NewUserService(repo)
-    input := &CreateUserInput{Email: "test@example.com"}
-
-    // Act
-    user, err := svc.Create(context.Background(), input)
-
-    // Assert
-    require.NoError(t, err)
-    assert.Equal(t, input.Email, user.Email)
-    assert.NotEmpty(t, user.ID)
-}
-
-func TestUserService_Create_DuplicateEmail(t *testing.T) {
-    // Arrange
-    repo := NewMockUserRepository()
-    repo.On("GetByEmail", mock.Anything).Return(&User{}, nil)
-    svc := NewUserService(repo)
-
-    // Act
-    _, err := svc.Create(context.Background(), &CreateUserInput{})
-
-    // Assert
-    assert.ErrorIs(t, err, ErrDuplicateEmail)
-}
-```
-
-### 5.3 前端测试规范
-
-```typescript
-// 组件测试
-import { render, screen, fireEvent } from '@testing-library/react';
-
-describe('UserCard', () => {
-  it('renders user info correctly', () => {
-    render(<UserCard user={mockUser} />);
-    expect(screen.getByText(mockUser.nickname)).toBeInTheDocument();
-  });
-
-  it('calls onSelect when clicked', () => {
-    const onSelect = vi.fn();
-    render(<UserCard user={mockUser} onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole('button'));
-    expect(onSelect).toHaveBeenCalledWith(mockUser);
-  });
-});
-```
-
----
-
-## 6. 安全规范
-
-### 6.1 代码安全
-
-| 规则 | 说明 |
-|------|------|
-| 禁止硬编码密钥 | 使用环境变量或密钥管理服务 |
-| SQL 参数化 | 禁止字符串拼接 SQL |
-| 输入验证 | 所有外部输入必须验证 |
-| 输出编码 | 防止 XSS，HTML 转义 |
-| 日志脱敏 | 密码、Token、PII 不入日志 |
-| 依赖审计 | 定期运行 `go mod audit` / `npm audit` |
-
-### 6.2 密钥管理
-
-```
-开发环境：.env.local（不提交 Git）
-测试环境：Kubernetes Secrets
-生产环境：AWS Secrets Manager / HashiCorp Vault
-
-.env.example（提交 Git，作为模板）
-```
-
----
-
-## 7. CI/CD 流程
-
-```mermaid
-graph LR
-    subgraph "CI Pipeline"
-        PUSH["Git Push"]
-        LINT["代码检查<br/>golangci-lint / ESLint"]
-        TEST["单元测试<br/>go test / vitest"]
-        BUILD["构建<br/>Docker Build"]
-        SCAN["安全扫描<br/>Trivy"]
-        INTEG["集成测试<br/>TestContainers"]
-    end
-
-    subgraph "CD Pipeline"
-        STAGE["部署 Staging<br/>Helm"]
-        E2E["E2E 测试<br/>Playwright"]
-        APPROVE["人工审批"]
-        PROD["部署 Production<br/>ArgoCD"]
-        SMOKE["冒烟测试"]
-    end
-
-    PUSH --> LINT --> TEST --> BUILD --> SCAN --> INTEG
-    INTEG --> STAGE --> E2E --> APPROVE --> PROD --> SMOKE
-```
-
----
-
-## 8. 文档规范
-
-| 文档类型 | 工具 | 位置 | 更新频率 |
-|----------|------|------|----------|
-| API 文档 | OpenAPI + buf | `docs/api/` | 随代码更新 |
-| 架构文档 | Markdown | `docs/architecture/` | 架构变更时 |
-| ADR | Markdown | `docs/adr/` | 架构决策时 |
-| 代码注释 | GoDoc / JSDoc | 源码中 | 随代码更新 |
-| README | Markdown | 每个服务根目录 | 随功能更新 |
-| 变更日志 | CHANGELOG.md | 项目根目录 | 每次发布 |
-
----
-
-## 9. 代码审查清单
-
-### 功能
-- [ ] 代码实现了需求描述的功能
-- [ ] 边界条件已处理
-- [ ] 错误路径已覆盖
-
-### 安全
-- [ ] 输入已验证
-- [ ] SQL 参数化
-- [ ] 敏感数据未入日志
-- [ ] 权限检查已添加
-
-### 性能
-- [ ] 数据库查询已优化
-- [ ] N+1 查询已避免
-- [ ] 缓存已合理使用
-
-### 可维护性
-- [ ] 代码清晰易读
-- [ ] 命名有意义
-- [ ] 无重复代码
-- [ ] 测试已添加
-
-### 运维
-- [ ] 日志充分
-- [ ] 指标已暴露
-- [ ] 配置可外部化
+修改 sibling knowledge-engine 时，还应在其目录运行 `go test ./...`，并同时验证 gateway 构建，因为 gateway 通过 `replace` 使用本地源码。
+
+## 7. 数据库迁移工作流
+
+1. 在根目录运行 `make db-migrate-create NAME=add_xxx`，工具会在 `apps/gateway/migrations` 生成顺序编号的 up/down SQL。
+2. 检查编号顺序，填写可重复执行且约束明确的 up，以及真正可逆的 down；不要修改已部署迁移。
+3. 本地执行 `make db-migrate`；需要时以 `make db-migrate-down` 回滚最近一个迁移，并验证再次 up。
+4. 测试重启后的初始化、空库和已有数据场景；新增查询同时评估索引、软删除与所有权条件。
+5. knowledge-engine 表结构变更放在 `../knowledge-engine/migrations`，不要混入 gateway 编号；嵌入启动会自动执行其迁移。
+
+## 8. 测试要求
+
+- Go 单元测试使用 `*_test.go`，优先覆盖 service 规则、所有权、工具循环、路径逃逸、沙箱参数和 repository 关键 SQL。
+- 外部 AI/MCP/MinIO 测试使用可控 HTTP server 或接口替身；不得在默认测试中依赖真实付费 API。
+- 需要 Docker/PostgreSQL/Redis 的集成测试应清楚标记环境前置条件；沙箱测试验证无网络、超时和输出截断。
+- 前端至少运行 typecheck 和相关 Vitest；流式 UI 测试覆盖追加、完成和错误路径。
+- CI 只构建和测试受影响的 gateway、go-common、web 与必要的 knowledge-engine，不维护多服务 protobuf/Kafka 矩阵。
+
+## 9. 安全与审查清单
+
+- 密钥只来自环境或受控密钥管理，不提交 `.env`；生产必须设置强 JWT secret 和有效 `ENCRYPTION_KEY`。
+- 新文件能力必须限制类型/大小和存储归属；新工作区工具必须阻止绝对路径、`..` 和符号链接逃逸。
+- 修改沙箱时保留无网络、只读 root、cap-drop、no-new-privileges、资源限制、超时和输出上限，除非有明确安全评审。
+- 检查列表分页、错误处理、context 取消、资源关闭和日志脱敏。
+- 检查文档没有 resurrect 已移除的 IDE、workflow、billing、监控平台、微服务或 Kubernetes 设计。

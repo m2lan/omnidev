@@ -1,77 +1,52 @@
-# OmniDev AI Platform — Development Standards
+# OmniDev — Development Guide
 
-## Overview
-OmniDev AI Platform: All-in-One AI development platform integrating IDE, Agent, RAG, Workflow, Deploy, and more.
+## What this is
 
-## Tech Stack
-- Backend: Go 1.22+ / Gin / gRPC / Wire
-- Frontend: Next.js 15 / React 19 / Tailwind / Shadcn/ui
-- Database: PostgreSQL 16 + pgvector / Redis 7 / Kafka (KRaft)
-- Storage: MinIO (S3-compatible)
-- Search: Elasticsearch 8
-- Workflow: Temporal
-- Infra: Docker / Kubernetes / Helm / Terraform
-- Observability: Prometheus / Grafana / Loki / Jaeger / OpenTelemetry
+OmniDev is an AI knowledge & coding workbench: multi-model Chat, knowledge bases with RAG, and background agents that execute code in Docker sandboxes.
 
-## Development Rules
+**The backend is a modular monolith.** Do not reintroduce per-feature microservices, Kafka, Elasticsearch, Temporal, or a monitoring stack. Removed non-goals: online IDE, visual workflow canvas, self-built billing, one-click deploy, notification service.
 
-### Implementation Cadence
-- One module at a time, production-grade quality required
-- Follow milestone order in architecture docs (M0 → M1 → M2 → M3 → M4)
+## Layout
 
-### Quality Requirements (every module must include)
-1. **Complete code** — no `...`, `TODO`, or placeholders
-2. **Unit tests** — coverage > 80%
-3. **Integration tests** — core flows covered
-4. **API docs** — OpenAPI 3.0 spec
-5. **DB migration scripts** — up + down
-6. **README** — module description, startup, config
-7. **Deployment guide** — Docker / K8s steps
-8. **Performance notes** — key path optimizations
-9. **Security design** — auth, authorization, input validation, log redaction
-10. **Troubleshooting** — common issues and fixes
-11. **Follow-ups** — incomplete items for the module
+- `apps/gateway` — the only backend binary (auth, users, chat, knowledge, agent)
+  - `cmd/gateway` — entrypoint, dependency wiring
+  - `internal/adapter` — model providers (OpenAI, DeepSeek, Qwen, Anthropic)
+  - `internal/agent` — agent domain, planner, executor, Docker sandbox, tools, HTTP handlers
+  - `internal/mcp` — outbound MCP client (streamable HTTP) used by chat
+  - `internal/service`, `internal/handler`, `internal/repository`, `internal/router`
+  - `migrations` — single PostgreSQL schema, sequential 001…00N
+- `apps/web` — Next.js 15 / React 19 frontend
+- `packages/go-common` — config, auth, cache, storage, parser, middleware
+- `../knowledge-engine` — sibling repo imported via `replace`; also a standalone MCP/HTTP server
 
-### Output Rules
-- Output to model max length, no compression or omission
-- No `...`, `// omitted`, `/* similar code */` placeholders
-- When hitting output limit, end with `Continued: Module X, Part N`
-- Wait for user to send `continue` before resuming
+## Commands
 
-### Code Style
-- Go: follow Effective Go, golangci-lint standards
-- TypeScript: ESLint + Prettier, strict mode
-- Commit: `<type>(<scope>): <description>` format
-- Branch: feature/{module}-{desc} → develop → main
+```bash
+go build ./apps/gateway/... ./packages/go-common/...
+go test  ./apps/gateway/... ./packages/go-common/...
+go vet   ./apps/gateway/... ./packages/go-common/...
+pnpm --filter web typecheck
 
-### Directory Structure
-See `docs/architecture/07-DIRECTORY-STRUCTURE.md`
+make dev-infra     # Postgres/Redis/MinIO/Tika + migrations
+make run-gateway   # API :9090
+make web-dev       # UI :3000
+make db-migrate-create NAME=add_xxx
+```
 
-### Documentation Sync Rule
+## Rules
 
-**When adding new config or features, update all three files:**
+- Keep features in the gateway unless there is a measured reason to split; shared code goes to `packages/go-common` or `knowledge-engine`.
+- Every resource query must enforce the owning user; agent workspaces must stay inside the configured sandbox root.
+- Never execute agent code on the host: it goes through `agent/executor.SandboxManager` (Docker, no network, read-only root, resource limits).
+- Database changes = new sequential migration in `apps/gateway/migrations` (up + down).
+- Complete code only: no `...`, `TODO`, or placeholder implementations. If something is not implemented, say so in docs instead of shipping a mock.
+- Go: Effective Go + golangci-lint. TypeScript: strict mode, ESLint + Prettier. Commits: `<type>(<scope>): <description>`.
 
-1. **`.env.example`** — add new env vars with comments
-2. **`README.md`** — English docs, config descriptions and examples
-3. **`README_zh.md`** — Chinese docs, keep consistent with English
+### Documentation sync
 
-Pre-commit checklist:
-- [ ] `.env.example` has the new variables?
-- [ ] `README.md` env section updated?
-- [ ] `README_zh.md` env section updated?
-- [ ] Config examples consistent across both READMEs?
+When config or features change, update together:
+1. `.env.example` — new variables with comments
+2. `README.md` and `README_zh.md` — keep them consistent
+3. `docs/architecture/09-MILESTONE-PLAN.md` — status must match reality (done / planned / cancelled)
 
-Rule: config change = all three files, no exceptions.
-
-### Architecture References
-All architecture docs are in `docs/architecture/`:
-- 00-EXECUTIVE-SUMMARY.md — Project vision
-- 01-REQUIREMENTS-ANALYSIS.md — Requirements
-- 02-FEATURE-BOUNDARY.md — Feature boundaries
-- 03-NON-FUNCTIONAL-REQUIREMENTS.md — Non-functional requirements
-- 04-TECHNOLOGY-SELECTION.md — Tech selection
-- 05-SYSTEM-ARCHITECTURE.md — System architecture
-- 06-DATABASE-DESIGN.md — Database design
-- 07-DIRECTORY-STRUCTURE.md — Directory structure
-- 08-DEVELOPMENT-STANDARDS.md — Development standards
-- 09-MILESTONE-PLAN.md — Milestone plan
+Architecture references live in `docs/architecture/` (00 summary … 09 milestones).

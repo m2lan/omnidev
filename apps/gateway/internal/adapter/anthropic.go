@@ -82,6 +82,11 @@ func (a *AnthropicAdapter) Models() []string {
 	return a.models
 }
 
+// SupportsTools is false until Anthropic tool_use/tool_result blocks are mapped.
+func (a *AnthropicAdapter) SupportsTools() bool {
+	return false
+}
+
 func (a *AnthropicAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	body := a.buildRequest(req, false)
 
@@ -272,9 +277,9 @@ func (a *AnthropicAdapter) buildRequest(req *ChatRequest, stream bool) map[strin
 // Anthropic API response types
 
 type anthropicResponse struct {
-	ID         string `json:"id"`
-	Model      string `json:"model"`
-	Content    []struct {
+	ID      string `json:"id"`
+	Model   string `json:"model"`
+	Content []struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`

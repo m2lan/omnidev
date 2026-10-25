@@ -6,8 +6,8 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "OmniDev - AI Development Platform",
-  description: "All-in-One AI development platform for building, deploying, and monitoring applications.",
+  title: "OmniDev - AI Knowledge & Coding Workbench",
+  description: "Multi-model chat, searchable knowledge bases, and background agents in Docker sandboxes.",
   icons: {
     icon: "/favicon.ico",
   },

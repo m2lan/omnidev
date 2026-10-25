@@ -38,21 +38,17 @@ export default function Home() {
 
         {/* Tagline */}
         <p className="max-w-[600px] text-lg text-muted-foreground">
-          All-in-One AI Development Platform. Build, deploy, and monitor your applications
-          with the power of AI.
+          AI knowledge and coding workbench for teams: multi-model chat, searchable
+          knowledge bases, and background agents that run code in Docker sandboxes.
         </p>
 
         {/* Feature Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl">
           {[
             { icon: "💬", title: "AI Chat", desc: "Multi-model conversations" },
-            { icon: "🤖", title: "Agents", desc: "Autonomous AI workers" },
-            { icon: "📚", title: "RAG", desc: "Knowledge base search" },
-            { icon: "💻", title: "IDE", desc: "Online code editor" },
-            { icon: "⚡", title: "Workflow", desc: "Visual automation" },
-            { icon: "🔌", title: "MCP", desc: "Tool integrations" },
-            { icon: "🚀", title: "Deploy", desc: "One-click deployment" },
-            { icon: "📊", title: "Monitor", desc: "Observability" },
+            { icon: "📚", title: "Knowledge", desc: "Document search with citations" },
+            { icon: "🤖", title: "Agents", desc: "Sandboxed background tasks" },
+            { icon: "🔌", title: "MCP", desc: "External tool integrations" },
           ].map((feature) => (
             <div
               key={feature.title}
@@ -90,13 +86,11 @@ export default function Home() {
           <span>•</span>
           <span>Next.js</span>
           <span>•</span>
-          <span>PostgreSQL</span>
+          <span>PostgreSQL + pgvector</span>
           <span>•</span>
           <span>Redis</span>
           <span>•</span>
-          <span>Kafka</span>
-          <span>•</span>
-          <span>Kubernetes</span>
+          <span>Docker</span>
         </div>
       </div>
     </div>

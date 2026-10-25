@@ -9,6 +9,7 @@ import (
 	"github.com/omnidev/go-common/auth"
 	"github.com/omnidev/go-common/middleware"
 
+	agenthandler "github.com/omnidev/gateway/internal/agent/handler"
 	"github.com/omnidev/gateway/internal/handler"
 	knowledgehandler "github.com/omnidev/gateway/internal/knowledge"
 )
@@ -24,6 +25,7 @@ func Setup(
 	uploadHandler *handler.UploadHandler,
 	knowledgeKBHandler *knowledgehandler.KnowledgeBaseHandler,
 	knowledgeSearchHandler *knowledgehandler.SearchHandler,
+	agentHandler *agenthandler.AgentHandler,
 ) {
 	// Health checks (no auth required)
 	r.GET("/health", healthHandler.Health)
@@ -105,6 +107,25 @@ func Setup(
 				knowledgeGroup.POST("/:id/documents", knowledgeKBHandler.UploadDocument)
 				knowledgeGroup.DELETE("/:id/documents/:doc_id", knowledgeKBHandler.DeleteDocument)
 				knowledgeGroup.POST("/:id/search", knowledgeSearchHandler.Search)
+			}
+
+			// Background agents (Docker sandbox)
+			if agentHandler != nil {
+				agents := protected.Group("/agents")
+				{
+					agents.GET("", agentHandler.ListAgents)
+					agents.POST("", agentHandler.CreateAgent)
+					agents.GET("/:id", agentHandler.GetAgent)
+					agents.PATCH("/:id", agentHandler.UpdateAgent)
+					agents.DELETE("/:id", agentHandler.DeleteAgent)
+					agents.POST("/:id/run", agentHandler.RunAgent)
+					agents.GET("/:id/runs", agentHandler.ListRuns)
+				}
+				agentRuns := protected.Group("/agent-runs")
+				{
+					agentRuns.GET("/:run_id", agentHandler.GetRun)
+					agentRuns.POST("/:run_id/cancel", agentHandler.CancelRun)
+				}
 			}
 		}
 

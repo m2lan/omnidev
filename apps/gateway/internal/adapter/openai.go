@@ -86,6 +86,11 @@ func (a *OpenAIAdapter) Models() []string {
 	return a.models
 }
 
+// SupportsTools reports that OpenAI-compatible endpoints accept function tools.
+func (a *OpenAIAdapter) SupportsTools() bool {
+	return true
+}
+
 func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	body := a.buildRequest(req, false)
 
@@ -124,9 +129,10 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatRespon
 
 	choice := result.Choices[0]
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: choice.Message.Content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   choice.Message.Content,
+		ToolCalls: choice.Message.ToolCalls,
+		Model:     result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,
@@ -170,6 +176,7 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 		defer close(ch)
 		defer resp.Body.Close()
 
+		var pendingToolCalls []ToolCall
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -197,10 +204,10 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 				// Stream reasoning content
 				if delta.ReasoningContent != "" {
 					ch <- ChatStreamChunk{
-						ID:     chunk.ID,
-						Delta:  delta.ReasoningContent,
-						Model:  chunk.Model,
-						Type:   "reasoning",
+						ID:    chunk.ID,
+						Delta: delta.ReasoningContent,
+						Model: chunk.Model,
+						Type:  "reasoning",
 					}
 				}
 
@@ -218,6 +225,28 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *ChatRequest) (<-cha
 						ID:     chunk.ID,
 						Model:  chunk.Model,
 						Finish: finishReason,
+					}
+				}
+
+				for _, callDelta := range delta.ToolCalls {
+					for len(pendingToolCalls) <= callDelta.Index {
+						pendingToolCalls = append(pendingToolCalls, ToolCall{Type: "function"})
+					}
+					call := &pendingToolCalls[callDelta.Index]
+					if callDelta.ID != "" {
+						call.ID = callDelta.ID
+					}
+					if callDelta.Function.Name != "" {
+						call.Function.Name = callDelta.Function.Name
+					}
+					call.Function.Arguments += callDelta.Function.Arguments
+				}
+				if len(pendingToolCalls) > 0 && finishReason != "" {
+					ch <- ChatStreamChunk{
+						ID:        chunk.ID,
+						Model:     chunk.Model,
+						Finish:    finishReason,
+						ToolCalls: append([]ToolCall(nil), pendingToolCalls...),
 					}
 				}
 			}
@@ -406,6 +435,15 @@ type openaiStreamChunk struct {
 		Delta struct {
 			Content          string `json:"content"`
 			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`

@@ -1,13 +1,9 @@
 # ==============================================================================
-# OmniDev AI Platform — Full Development Environment
-# Usage: docker compose -f deploy/docker/docker-compose.dev.yml up -d
+# OmniDev — Gateway (auth + chat + knowledge + agent) and reverse proxy
+# Usage: make dev  (combines this file with docker-compose.infra.yml)
 # ==============================================================================
 
 services:
-  # --- Infrastructure (includes all from infra compose) ---
-  # NOTE: Run docker-compose.infra.yml first, or use: make dev
-
-  # --- API Gateway ---
   gateway:
     build:
       context: ../../../
@@ -27,77 +23,38 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: "123456"
-      KAFKA_BROKERS: kafka:29092
       JWT_SECRET: dev-jwt-secret-change-in-production
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_USE_SSL: "false"
+      TIKA_ENDPOINT: http://tika:9998
       KNOWLEDGE_STORAGE_TYPE: local
       KNOWLEDGE_LOCAL_PATH: /tmp/knowledge
+      KNOWLEDGE_PARSER_TYPE: tika
+      SANDBOX_ENABLED: "true"
+      SANDBOX_WORKSPACE_ROOT: /app/data/agent-workspaces
+      # Host-side path of the same directory; the Docker daemon resolves bind
+      # mounts on the host, not inside this container.
+      SANDBOX_HOST_WORKSPACE_ROOT: ${SANDBOX_HOST_WORKSPACE_ROOT:-/tmp/omnidev-agent-workspaces}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${SANDBOX_HOST_WORKSPACE_ROOT:-/tmp/omnidev-agent-workspaces}:/app/data/agent-workspaces
+      - knowledge_data:/tmp/knowledge
+    # The socket is usually owned by the "docker" group; override DOCKER_GID on
+    # Linux with `getent group docker | cut -d: -f3`.
+    group_add:
+      - "${DOCKER_GID:-0}"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - omnidev
 
-  # --- User Service ---
-  user-service:
-    build:
-      context: ../../
-      dockerfile: apps/services/user/Dockerfile
-    container_name: omnidev-user-service
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      APP_ENV: development
-      APP_PORT: "8081"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: omnidev
-      DB_PASSWORD: omnidev
-      DB_NAME: omnidev
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      REDIS_PASSWORD: "123456"
-      JWT_SECRET: dev-jwt-secret-change-in-production
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - omnidev
-
-  # --- Chat Service ---
-  chat-service:
-    build:
-      context: ../../
-      dockerfile: apps/services/chat/Dockerfile
-    container_name: omnidev-chat-service
-    restart: unless-stopped
-    ports:
-      - "8082:8082"
-    environment:
-      APP_ENV: development
-      APP_PORT: "8082"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: omnidev
-      DB_PASSWORD: omnidev
-      DB_NAME: omnidev
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      REDIS_PASSWORD: "123456"
-      KAFKA_BROKERS: kafka:29092
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - omnidev
-
-  # --- Nginx Reverse Proxy ---
   nginx:
     image: nginx:alpine
     container_name: omnidev-nginx
@@ -115,3 +72,6 @@ services:
 networks:
   omnidev:
     driver: bridge
+
+volumes:
+  knowledge_data:

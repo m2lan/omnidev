@@ -14,7 +14,7 @@ WORKDIR /app
 ENV GOWORK=off
 
 # Copy module files first for better layer caching
-COPY omnidev/packages/go-common/go.mod ./omnidev/packages/go-common/
+COPY omnidev/packages/go-common/go.mod omnidev/packages/go-common/go.sum ./omnidev/packages/go-common/
 COPY knowledge-engine/go.mod knowledge-engine/go.sum ./knowledge-engine/
 COPY omnidev/apps/gateway/go.mod omnidev/apps/gateway/go.sum ./omnidev/apps/gateway/
 
@@ -39,11 +39,17 @@ RUN cd omnidev/apps/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # ==============================================================================
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates tzdata
+# docker-cli lets the gateway start isolated agent sandbox containers through
+# the Docker socket mounted by docker-compose.
+RUN apk add --no-cache ca-certificates tzdata docker-cli
 
 RUN adduser -D -g '' appuser
 
 COPY --from=builder /app/gateway /app/gateway
+
+RUN mkdir -p /app/data/agent-workspaces && chown -R appuser:appuser /app/data
+
+WORKDIR /app
 
 USER appuser
 

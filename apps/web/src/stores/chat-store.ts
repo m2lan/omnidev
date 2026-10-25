@@ -163,8 +163,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
           state.activeConversationId === id
             ? conversations[0]?.id || null
             : state.activeConversationId;
-        const { [id]: _, ...messagesCache } = state.messagesCache;
-        const { [id]: __, ...streamingStates } = state.streamingStates;
+        const messagesCache = { ...state.messagesCache };
+        const streamingStates = { ...state.streamingStates };
+        delete messagesCache[id];
+        delete streamingStates[id];
         const sendingConversationIds = new Set(state.sendingConversationIds);
         sendingConversationIds.delete(id);
         return { conversations, activeConversationId, messagesCache, streamingStates, sendingConversationIds };
@@ -266,7 +268,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // Remove from sending set and clear streaming state
           const sendingConversationIds = new Set(state.sendingConversationIds);
           sendingConversationIds.delete(conversationId);
-          const { [conversationId]: _, ...streamingStates } = state.streamingStates;
+          const streamingStates = { ...state.streamingStates };
+          delete streamingStates[conversationId];
 
           // Auto-update conversation title from first user message (matches backend generateTitle)
           const conversations = state.conversations.map((c) => {
@@ -292,7 +295,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // Remove from sending set and clear streaming state
           const sendingConversationIds = new Set(state.sendingConversationIds);
           sendingConversationIds.delete(conversationId);
-          const { [conversationId]: _, ...streamingStates } = state.streamingStates;
+          const streamingStates = { ...state.streamingStates };
+          delete streamingStates[conversationId];
 
           return {
             sendingConversationIds,

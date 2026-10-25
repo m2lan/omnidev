@@ -55,11 +55,19 @@ func (a *DeepSeekAdapter) Models() []string {
 	return a.models
 }
 
+// SupportsTools reports that DeepSeek accepts OpenAI-compatible function tools.
+func (a *DeepSeekAdapter) SupportsTools() bool {
+	return true
+}
+
 func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	body := map[string]interface{}{
 		"model":    req.Model,
 		"messages": req.Messages,
 		"stream":   false,
+	}
+	if len(req.Tools) > 0 {
+		body["tools"] = req.Tools
 	}
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
@@ -107,9 +115,10 @@ func (a *DeepSeekAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResp
 		content = result.Choices[0].Message.ReasoningContent
 	}
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   content,
+		ToolCalls: result.Choices[0].Message.ToolCalls,
+		Model:     result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,

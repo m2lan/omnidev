@@ -3,10 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/web",
-    "packages/ts-common",
-    "packages/ui",
-    "packages/config/*"
+    "apps/web"
   ],
   "scripts": {
     "dev": "turbo dev",

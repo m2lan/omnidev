@@ -1,265 +1,182 @@
-<p align="center">
-  <img src="docs/assets/omnidev-logo.svg" alt="OmniDev AI Platform" width="120" height="120">
-</p>
-
-<h1 align="center">OmniDev AI Platform</h1>
+<h1 align="center">OmniDev</h1>
 
 <p align="center">
-  <strong>All-in-One AI Development Platform</strong>
+  <strong>AI knowledge &amp; coding workbench for teams</strong>
 </p>
 
 <p align="center">
-  Open your browser, write code with AI, manage projects, and deploy — all in one place.
+  Multi-model chat, searchable knowledge bases, and background agents that run code in Docker sandboxes — one Go binary, one Next.js app.
 </p>
 
 <p align="center">
-  <a href="README_zh.md">中文文档</a> · <a href="#-quickstart">Quickstart</a> · <a href="#-architecture">Architecture</a> · <a href="docs/architecture/">Docs</a>
+  <a href="README_zh.md">中文文档</a> · <a href="#quickstart">Quickstart</a> · <a href="#architecture">Architecture</a> · <a href="docs/architecture/">Docs</a>
 </p>
 
 ---
 
 ## What is OmniDev?
 
-OmniDev integrates an AI coding assistant, online IDE, Agent orchestration, RAG knowledge base, CI/CD pipelines, and monitoring into a single platform. It's designed for developers and teams who want to build, ship, and operate software without switching between a dozen tools.
+OmniDev is a self-hostable workbench built around three things that work today:
 
-## Key Features
+- **Chat** — multi-model conversations (OpenAI, DeepSeek, Qwen, Anthropic) with streaming, file attachments, image input/output, per-user provider keys, and external MCP tools.
+- **Knowledge** — upload documents, chunk and embed them, search with pgvector, and inject the results into chat as cited context. Powered by the embedded [knowledge-engine](../knowledge-engine) module, which also runs standalone as an HTTP API and MCP server.
+- **Background agents** — describe a task, and an agent plans and executes it asynchronously with workspace file tools, search, a calculator, and code execution inside isolated Docker containers. Runs are persisted, pollable, and cancellable.
 
-### Online IDE
-- **Monaco Editor** — syntax highlighting, multi-cursor, minimap, file search & replace
-- **AI Code Completion** — Tab completion, multi-line suggestions, context-aware via LSP
-- **Agent Code Editing** — AI Agent directly modifies code with Diff preview, accept/reject/undo
-- **Terminal Emulator** — xterm.js, multi-tab, SSH, PTY support
-- **Git Integration** — commit/push/pull/branch/merge, visual Diff
-- **Code Review** — inline comments, AI-assisted review
+Everything is served by a **modular monolith**: `apps/gateway` contains auth, users, chat, knowledge, and agent. There are no microservices to orchestrate.
 
-### Agent System
-- **Natural Language Tasks** — describe what you want, Agent decomposes, plans, and executes
-- **Tool Calling** — built-in tools + custom MCP tools with Function Calling support
-- **Visual Orchestration** — drag-and-drop canvas, node wiring, conditional branching
-- **Sandbox Execution** — Docker isolation, resource limits, filesystem mounting
-- **Execution Monitoring** — real-time logs, step tracing, intermediate state inspection
-- **Agent Templates** — pre-built: code review, test generation, doc generation, etc.
-- **Multi-Agent Collaboration** — CrewAI-style, role assignment, task delegation
-- **Agent Marketplace** — export configs, ratings, install stats
+### Explicitly not included
 
-### RAG Knowledge Base
-- Multi-format upload (PDF, Markdown, code files)
-- Hybrid search: vector (pgvector) + keyword (Elasticsearch)
-- Code-aware chunking & indexing
-- Integration with Chat and Agent for context injection
+These were dropped because they were mocked, replaceable by integrations, or not worth the operational cost: online IDE (Monaco + fake terminal), visual drag-and-drop workflow canvas, self-built billing/subscriptions, the Prometheus/Grafana/Loki/Jaeger monitoring stack, one-click deployment, notification service, Kafka, Elasticsearch, Temporal, and the 16-microservice split. Agent **PR delivery is not implemented yet**.
 
-### CI/CD & Deployment
-- Natural language pipeline configuration
-- Kubernetes-native deployment
-- Multi-cloud support (AWS/GCP/Azure)
-- Git-triggered automated pipelines
+## Feature status
 
-### Monitoring & Observability
-- Built-in OpenTelemetry integration
-- Prometheus + Grafana + Loki + Jaeger stack
-- AI-powered anomaly detection
-- Custom alerting rules
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Backend | Go 1.22+, Gin, gRPC, Wire (DI) |
-| Frontend | Next.js 15 (App Router), React 19, Tailwind CSS, Shadcn/ui |
-| Database | PostgreSQL 16 + pgvector, Redis 7, Kafka (KRaft) |
-| Storage | MinIO (S3 compatible) |
-| Search | Elasticsearch 8 |
-| Workflow | Temporal |
-| Infra | Docker, Kubernetes, Helm, Terraform |
-| Observability | Prometheus, Grafana, Loki, Jaeger, OpenTelemetry |
+| Area | Status | Notes |
+|------|--------|-------|
+| Auth (JWT, refresh, API keys, OAuth hooks) | Working | Per-user ownership checks on all resources |
+| Chat (streaming + non-streaming) | Working | OpenAI / DeepSeek / Qwen / Anthropic adapters |
+| Attachments & multimodal | Working | MinIO storage, Tika parsing, image generation |
+| Per-user AI provider configs (BYOK) | Working | Optional `ENCRYPTION_KEY` for stored keys |
+| Knowledge bases + RAG in chat | Working | Tika parsing, per-KB chunking, pgvector search, Redis cache |
+| External MCP tools in chat | Working | OpenAI-compatible adapters; Anthropic tool calling not mapped yet |
+| Background agents + Docker sandbox | Working | Async runs, step records, cancel; requires Docker |
+| Agent PR delivery | Planned | No git/PR integration exists |
+| Online IDE, visual workflows, billing, monitoring | Removed | Non-goals, see above |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Gateway (Kong/Custom)                      │
-│              Rate Limit · Auth · Routing · WAF               │
-└──────────┬──────────┬──────────┬──────────┬─────────────────┘
-           │          │          │          │
-     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
-     │   IDE   │ │  Chat  │ │Agent │ │   RAG   │
-     │ Service │ │ Engine │ │System│ │ Service │
-     └─────────┘ └────────┘ └──────┘ └─────────┘
-           │          │          │          │
-     ┌─────┴───┐ ┌───┴────┐ ┌──┴───┐ ┌───┴─────┐
-     │  Git    │ │  MCP   │ │Sandbox│ │  MCP   │
-     │ Service │ │ Server │ │System │ │ Server │
-     └─────────┘ └────────┘ └───────┘ └─────────┘
-           │          │          │          │
-     ┌─────┴──────────┴──────────┴──────────┴─────┐
-     │              Data Layer                      │
-     │  PostgreSQL · Redis · Kafka · MinIO · ES    │
-     └─────────────────────────────────────────────┘
+apps/web (Next.js 15, React 19)
+        │ HTTP / SSE
+        ▼
+apps/gateway (Go 1.22, Gin) — one binary
+  ├─ auth / users / API keys
+  ├─ chat ─────────────┬─ knowledge-engine (embedded Go module)
+  │                    └─ MCP client → external MCP servers
+  └─ agent: planner → executor → tools → Docker sandbox
+
+packages/go-common — config, auth, cache, storage, parser, middleware
+
+PostgreSQL 16 + pgvector · Redis 7 · MinIO · Apache Tika · Docker (agent sandbox)
 ```
 
-## Project Structure
-
 ```
-omnidev-ai-platform/
-├── apps/                    # Application services
-│   ├── web/                 # Next.js frontend
-│   ├── gateway/             # API Gateway (Go/Gin)
-│   ├── user/                # User Service (Go)
-│   ├── project/             # Project Service (Go)
-│   ├── workspace/           # Workspace Service (Go)
-│   ├── terminal/            # Terminal Service (Go)
-│   ├── file/                # File Service (Go)
-│   ├── git/                 # Git Service (Go)
-│   ├── chat/                # Chat Service (Go)
-│   ├── agent/               # Agent Service (Go)
-│   ├── rag/                 # RAG Service (Go)
-│   ├── workflow/            # Workflow Service (Go)
-│   ├── sandbox/             # Sandbox Service (Go)
-│   ├── mcp/                 # MCP Service (Go)
-│   ├── billing/             # Billing Service (Go)
-│   ├── deploy/              # Deploy Service (Go)
-│   └── monitor/             # Monitor Service (Go)
-├── packages/                # Shared libraries
-│   ├── ui/                  # UI component library
-│   ├── utils/               # Common utilities
-│   ├── proto/               # gRPC proto definitions
-│   └── types/               # Shared TypeScript types
-├── tools/                   # Dev tools & scripts
-├── deploy/                  # Deployment configs
-├── docs/                    # Documentation
-└── web-extensions/          # Browser extensions
+omnidev/
+├── apps/
+│   ├── gateway/            # API: auth + chat + knowledge + agent
+│   │   ├── cmd/gateway/    # entrypoint + knowledge wiring
+│   │   ├── internal/       # adapter, agent, handler, knowledge, mcp, repository, router, service
+│   │   └── migrations/     # 001–009, single database schema
+│   └── web/                # Next.js frontend (chat, knowledge, agents, settings)
+├── packages/go-common/     # shared Go packages
+├── deploy/docker/          # compose: infra + gateway + nginx
+├── docs/                   # architecture and feature docs
+└── Makefile
+
+../knowledge-engine/        # sibling repo: embeddable RAG engine + standalone MCP/HTTP server
 ```
 
 ## Quickstart
 
-### Prerequisites
+Prerequisites: Go 1.22+, Node.js 20+, pnpm 9, Docker.
 
-- Go 1.22+
-- Node.js 20+
-- Docker & Docker Compose
-- PostgreSQL 16
-- Redis 7
-
-### Run Locally
+Clone **both** repositories side by side — the gateway imports `knowledge-engine` through a local `replace` directive:
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/omnidev-ai-platform.git
-cd omnidev-ai-platform
-
-# Start infrastructure
-docker-compose up -d postgres redis kafka minio elasticsearch
-
-# Run database migrations
-cd tools/migrations && make migrate-up
-
-# Start backend services
-cd apps/gateway && go run cmd/main.go
-
-# Start frontend
-cd apps/web && pnpm install && pnpm dev
+git clone git@github.com:m2lan/omnidev.git
+git clone git@github.com:m2lan/knowledge-engine.git
+cd omnidev
+cp .env.example .env   # add your provider keys
 ```
 
-### Environment Variables
-
-Copy `.env.example` to `.env` and configure:
+### Option A: run the gateway on the host
 
 ```bash
-cp .env.example .env
+make dev-infra      # PostgreSQL, Redis, MinIO, Tika + migrations
+make run-gateway    # API on :9090
+make web-dev        # web UI on :3000
 ```
 
-Key variables:
-- `DATABASE_URL` — PostgreSQL connection string
-- `REDIS_URL` — Redis connection string
-- `JWT_SECRET` — JWT signing secret
-- `OPENAI_API_KEY` — OpenAI API key (or other provider)
+### Option B: run everything in Docker
 
-#### RAG Embedding Configuration
+```bash
+make dev            # infra + gateway + nginx (builds the gateway image)
+```
 
-Configure the embedding provider for RAG knowledge base. Provider-based selection instead of model name guessing:
+The gateway container mounts `/var/run/docker.sock` so agents can start sandbox containers. Set `SANDBOX_HOST_WORKSPACE_ROOT` to the host path of the agent workspace directory (default `/tmp/omnidev-agent-workspaces`) and `DOCKER_GID` on Linux if the socket is group-restricted.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RAG_EMBEDDING_PROVIDER` | Provider name: `openai` / `gemini` / `ollama` | `openai` |
-| `RAG_EMBEDDING_MODEL` | Model identifier (provider-specific) | `text-embedding-3-small` |
-| `RAG_EMBEDDING_API_KEY` | API key override (optional, falls back to provider key) | — |
-| `RAG_EMBEDDING_BASE_URL` | Base URL for self-hosted services (Ollama, vLLM, etc.) | — |
+### Agent sandbox
 
-Example configurations:
+```bash
+make sandbox-images   # pre-pull python/node/go/shell runtime images
+```
+
+Each run gets its own workspace mounted at `/workspace`. Containers have no network, a read-only root filesystem, `tmpfs /tmp`, dropped capabilities, `no-new-privileges`, CPU/memory/PID limits, and a configurable timeout (`SANDBOX_TIMEOUT`, default 120s). Supported languages: Python, JavaScript/Node, Go, shell.
+
+## Configuration
+
+All configuration is environment-driven; see [`.env.example`](.env.example) for the full list.
+
+| Area | Variables |
+|------|-----------|
+| Server & DB | `APP_*`, `DB_*`, `REDIS_*` |
+| Auth | `JWT_SECRET`, `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_EXPIRY`, `ENCRYPTION_KEY` |
+| Models | `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `QWEN_API_KEY`, `ANTHROPIC_API_KEY`, `AI_DEFAULT_MODEL` |
+| Files | `MINIO_*`, `TIKA_ENDPOINT` |
+| Knowledge | `RAG_EMBEDDING_PROVIDER/MODEL/API_KEY/BASE_URL`, `KNOWLEDGE_*` |
+| MCP | `MCP_ENABLED`, `MCP_SERVERS` (JSON array of `{name, url, api_key, timeout_seconds, headers}`) |
+| Agent | `AGENT_MODEL`, `AGENT_BASE_URL`, `AGENT_API_KEY`, `SANDBOX_*` |
+
+Embedding dimensions follow the embedding model per knowledge base (`KNOWLEDGE_EMBEDDING_DIMENSIONS=0` uses the provider default), so 768-dim and 1536-dim models can coexist.
+
+Example MCP configuration:
 
 ```env
-# OpenAI (default)
-RAG_EMBEDDING_PROVIDER=openai
-RAG_EMBEDDING_MODEL=text-embedding-3-small
-
-# Gemini
-RAG_EMBEDDING_PROVIDER=gemini
-RAG_EMBEDDING_MODEL=gemini-embedding-2
-
-# Ollama (local)
-RAG_EMBEDDING_PROVIDER=ollama
-RAG_EMBEDDING_MODEL=nomic-embed-text
-RAG_EMBEDDING_BASE_URL=http://localhost:11434/v1
-
-# Self-hosted OpenAI-compatible (vLLM, text-embedding-inference, etc.)
-RAG_EMBEDDING_PROVIDER=openai
-RAG_EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
-RAG_EMBEDDING_BASE_URL=http://your-server:8080/v1
+MCP_ENABLED=true
+MCP_SERVERS=[{"name":"knowledge","url":"http://localhost:9100/mcp","timeout_seconds":15}]
 ```
 
-To add a new embedding provider, register a factory in `embedder/registry.go` — zero main.go changes needed.
+Chat executes at most 5 tool rounds per message and truncates tool output to 8000 runes. Tool calls are recorded in the assistant message metadata as `tools_used`. MCP tools are currently offered to OpenAI-compatible adapters (OpenAI, DeepSeek, Qwen); Anthropic `tool_use` mapping is not implemented yet.
 
-## Competitive Landscape
+## Agent API
 
-| Capability | Competitors | OmniDev Differentiator |
-|-----------|-------------|----------------------|
-| AI Coding | Cursor, GitHub Copilot | Multi-model + local models + RAG |
-| Online IDE | Codespaces, Gitpod | Embedded AI Agent + one-click deploy |
-| Agent Platform | OpenHands, AutoGPT | Visual orchestration + sandbox + marketplace |
-| RAG / Knowledge | ChatGPT Projects, Notion AI | Multi-format + hybrid search + code index |
-| CI/CD | Jenkins, GitHub Actions | Natural language config + K8s native |
-| Deployment | Vercel, Railway | Multi-cloud + K8s + cost optimization |
-| Monitoring | Grafana Cloud | Built-in OTel + AI anomaly detection |
+All routes require a JWT and are registered only when `SANDBOX_ENABLED=true`.
 
-## Target Users
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET / POST | `/api/v1/agents` | List / create agents |
+| GET / PATCH / DELETE | `/api/v1/agents/:id` | Read / update / delete an agent |
+| POST | `/api/v1/agents/:id/run` | Start an async run (`{"task": "..."}`) |
+| GET | `/api/v1/agents/:id/runs` | List runs |
+| GET | `/api/v1/agent-runs/:run_id` | Run detail with steps |
+| POST | `/api/v1/agent-runs/:run_id/cancel` | Cancel a running run |
 
-| Persona | Use Case |
-|---------|----------|
-| Solo Developer | Rapid prototype → AI-assisted coding → one-click deploy |
-| Small Team (2-10) | Collaborative dev + Agent automation + shared knowledge base |
-| Medium/Large Team (10-100) | RBAC + audit + compliance + private deployment |
-| AI App Developer | Build/debug/deploy Agents and MCP Servers |
+## Development
 
-## Development Roadmap
+```bash
+go build ./apps/gateway/... ./packages/go-common/...
+go test  ./apps/gateway/... ./packages/go-common/...
+go vet   ./apps/gateway/... ./packages/go-common/...
+pnpm --filter web typecheck
 
-| Milestone | Timeline | Deliverables |
-|-----------|----------|--------------|
-| **M0 — Foundation** | Month 1-2 | Infrastructure, DB, auth, CI/CD |
-| **M1 — Alpha** | Month 3-4 | IDE (Monaco + terminal) + Agent (basic execution + tool calling + sandbox) |
-| **M2 — Beta** | Month 5-6 | IDE (Git + code review) + Agent (frontend + monitoring) |
-| **M3 — Ecosystem** | Month 7-9 | Agent visual orchestration + marketplace + multi-agent |
-| **M4 — GA** | Month 10-12 | Performance + security hardening + plugin system |
+make db-migrate                 # apply migrations to a local database
+make db-migrate-create NAME=x   # new migration in apps/gateway/migrations
+```
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Executive Summary](docs/architecture/00-EXECUTIVE-SUMMARY.md) | Project vision & positioning |
-| [Requirements Analysis](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | Functional & non-functional requirements |
-| [Feature Boundary](docs/architecture/02-FEATURE-BOUNDARY.md) | Module boundaries & dependencies |
-| [Non-Functional Requirements](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | Performance, security, availability |
-| [Technology Selection](docs/architecture/04-TECHNOLOGY-SELECTION.md) | Tech stack comparison & rationale |
-| [System Architecture](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | Architecture diagrams (Mermaid) |
-| [Database Design](docs/architecture/06-DATABASE-DESIGN.md) | ER diagrams & schema |
+| [Executive Summary](docs/architecture/00-EXECUTIVE-SUMMARY.md) | Positioning and scope |
+| [Requirements](docs/architecture/01-REQUIREMENTS-ANALYSIS.md) | What the product does and does not do |
+| [Feature Boundary](docs/architecture/02-FEATURE-BOUNDARY.md) | Module boundaries |
+| [Non-Functional Requirements](docs/architecture/03-NON-FUNCTIONAL-REQUIREMENTS.md) | Security, isolation, limits |
+| [Technology Selection](docs/architecture/04-TECHNOLOGY-SELECTION.md) | Stack and removed dependencies |
+| [System Architecture](docs/architecture/05-SYSTEM-ARCHITECTURE.md) | Request flows and runtime topology |
+| [Database Design](docs/architecture/06-DATABASE-DESIGN.md) | Real schema |
 | [Directory Structure](docs/architecture/07-DIRECTORY-STRUCTURE.md) | Project layout |
-| [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | Coding standards & workflow |
-| [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md) | Detailed milestone schedule |
-
-### Feature Documentation
-
-| Document | Description |
-|----------|-------------|
-| [File Upload & Multimodal](docs/features/file-upload-and-multimodal.md) | File upload, document parsing (Tika), multimodal messages |
+| [Development Standards](docs/architecture/08-DEVELOPMENT-STANDARDS.md) | Conventions and workflow |
+| [Milestone Plan](docs/architecture/09-MILESTONE-PLAN.md) | Done / planned / cancelled |
+| [File Upload & Multimodal](docs/features/file-upload-and-multimodal.md) | Attachments and parsing |
 
 ## License
 

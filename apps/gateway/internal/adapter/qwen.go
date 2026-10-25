@@ -48,11 +48,19 @@ func (a *QwenAdapter) Models() []string {
 	}
 }
 
+// SupportsTools reports that Qwen accepts OpenAI-compatible function tools.
+func (a *QwenAdapter) SupportsTools() bool {
+	return true
+}
+
 func (a *QwenAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	body := map[string]interface{}{
 		"model":    req.Model,
 		"messages": req.Messages,
 		"stream":   false,
+	}
+	if len(req.Tools) > 0 {
+		body["tools"] = req.Tools
 	}
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
@@ -95,9 +103,10 @@ func (a *QwenAdapter) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse
 	}
 
 	return &ChatResponse{
-		ID:      result.ID,
-		Content: result.Choices[0].Message.Content,
-		Model:   result.Model,
+		ID:        result.ID,
+		Content:   result.Choices[0].Message.Content,
+		ToolCalls: result.Choices[0].Message.ToolCalls,
+		Model:     result.Model,
 		Usage: Usage{
 			PromptTokens:     result.Usage.PromptTokens,
 			CompletionTokens: result.Usage.CompletionTokens,

@@ -11,13 +11,11 @@ type Config struct {
 	App       AppConfig       `mapstructure:"app"`
 	Database  DatabaseConfig  `mapstructure:"db"`
 	Redis     RedisConfig     `mapstructure:"redis"`
-	Kafka     KafkaConfig     `mapstructure:"kafka"`
 	MinIO     MinIOConfig     `mapstructure:"minio"`
-	ES        ESConfig        `mapstructure:"es"`
-	Temporal  TemporalConfig  `mapstructure:"temporal"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	OAuth     OAuthConfig     `mapstructure:"oauth"`
 	AI        AIConfig        `mapstructure:"ai"`
+	Agent     AgentConfig     `mapstructure:"agent"`
 	Security  SecurityConfig  `mapstructure:"security"`
 	Sandbox   SandboxConfig   `mapstructure:"sandbox"`
 	Telemetry TelemetryConfig `mapstructure:"telemetry"`
@@ -71,13 +69,6 @@ func (r RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
-// KafkaConfig holds Kafka connection settings.
-type KafkaConfig struct {
-	Brokers         []string `mapstructure:"brokers"`
-	GroupID         string   `mapstructure:"group_id"`
-	AutoOffsetReset string   `mapstructure:"auto_offset_reset"`
-}
-
 // MinIOConfig holds MinIO connection settings.
 type MinIOConfig struct {
 	Endpoint     string `mapstructure:"endpoint"`
@@ -85,19 +76,6 @@ type MinIOConfig struct {
 	SecretKey    string `mapstructure:"secret_key"`
 	UseSSL       bool   `mapstructure:"use_ssl"`
 	BucketPrefix string `mapstructure:"bucket_prefix"`
-}
-
-// ESConfig holds Elasticsearch connection settings.
-type ESConfig struct {
-	URL         string `mapstructure:"url"`
-	IndexPrefix string `mapstructure:"index_prefix"`
-}
-
-// TemporalConfig holds Temporal connection settings.
-type TemporalConfig struct {
-	Host      string `mapstructure:"host"`
-	Namespace string `mapstructure:"namespace"`
-	TaskQueue string `mapstructure:"task_queue"`
 }
 
 // JWTConfig holds JWT token settings.
@@ -143,17 +121,36 @@ type AIProviderConfig struct {
 	Models  []string `mapstructure:"models"`
 }
 
+// AgentConfig holds the planning model used by the background agent. The
+// endpoint must be OpenAI-compatible so DeepSeek, Qwen, vLLM and similar
+// providers can be used. Empty values fall back to the OpenAI provider block.
+type AgentConfig struct {
+	Model   string `mapstructure:"model"`
+	BaseURL string `mapstructure:"base_url"`
+	APIKey  string `mapstructure:"api_key"`
+}
+
 // SecurityConfig holds security-related settings.
 type SecurityConfig struct {
 	EncryptionKey string `mapstructure:"encryption_key"`
 }
 
-// SandboxConfig holds sandbox execution settings.
+// SandboxConfig holds Docker sandbox settings for agent code execution.
 type SandboxConfig struct {
-	RuntimeImage string        `mapstructure:"runtime_image"`
-	CPULimit     string        `mapstructure:"cpu_limit"`
-	MemoryLimit  string        `mapstructure:"memory_limit"`
-	Timeout      time.Duration `mapstructure:"timeout"`
+	Enabled bool `mapstructure:"enabled"`
+	// WorkspaceRoot is where the gateway writes run files. HostWorkspaceRoot is
+	// the same directory as seen by the Docker daemon; set it when the gateway
+	// itself runs in a container with the host Docker socket mounted.
+	WorkspaceRoot     string        `mapstructure:"workspace_root"`
+	HostWorkspaceRoot string        `mapstructure:"host_workspace_root"`
+	Network           string        `mapstructure:"network"`
+	PythonImage       string        `mapstructure:"python_image"`
+	NodeImage         string        `mapstructure:"node_image"`
+	GoImage           string        `mapstructure:"go_image"`
+	ShellImage        string        `mapstructure:"shell_image"`
+	CPULimit          string        `mapstructure:"cpu_limit"`
+	MemoryLimit       string        `mapstructure:"memory_limit"`
+	Timeout           time.Duration `mapstructure:"timeout"`
 }
 
 // TelemetryConfig holds OpenTelemetry settings.

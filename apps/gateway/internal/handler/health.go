@@ -33,7 +33,7 @@ func (h *HealthHandler) Health(c *gin.Context) {
 
 // Ready returns readiness status.
 func (h *HealthHandler) Ready(c *gin.Context) {
-	// TODO: check database, redis, kafka connections
+	// TODO: check database and redis connections
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ready",
 	})

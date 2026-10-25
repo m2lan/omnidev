@@ -484,6 +484,45 @@ class ApiClient {
     return this.post<ApiResponse<TestConnectionResult>>(`/api/v1/user/ai-configs/${id}/test`, {});
   }
 
+  // Agents
+  async listAgents(params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    return this.get<ApiResponse<Agent[]>>(`/api/v1/agents?${query}`);
+  }
+
+  async createAgent(data: CreateAgentInput) {
+    return this.post<ApiResponse<Agent>>("/api/v1/agents", data);
+  }
+
+  async updateAgent(id: string, data: CreateAgentInput) {
+    return this.patch<ApiResponse<Agent>>(`/api/v1/agents/${id}`, data);
+  }
+
+  async deleteAgent(id: string) {
+    return this.delete<ApiResponse<{ message: string }>>(`/api/v1/agents/${id}`);
+  }
+
+  async runAgent(id: string, task: string) {
+    return this.post<ApiResponse<AgentRun>>(`/api/v1/agents/${id}/run`, { task });
+  }
+
+  async listAgentRuns(id: string, params?: ListParams) {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.page_size) query.set("page_size", String(params.page_size));
+    return this.get<ApiResponse<AgentRun[]>>(`/api/v1/agents/${id}/runs?${query}`);
+  }
+
+  async getAgentRun(runId: string) {
+    return this.get<ApiResponse<AgentRunDetail>>(`/api/v1/agent-runs/${runId}`);
+  }
+
+  async cancelAgentRun(runId: string) {
+    return this.post<ApiResponse<{ message: string }>>(`/api/v1/agent-runs/${runId}/cancel`, {});
+  }
+
   // Helpers
   private put<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>(path, { method: "PUT", body });
@@ -766,5 +805,81 @@ export interface GeneratedImageResult {
   attachment: Attachment;
   revised_prompt?: string;
 }
+
+export interface AgentToolConfig {
+  name: string;
+  description?: string;
+  enabled: boolean;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  description?: string;
+  system_prompt: string;
+  tools: AgentToolConfig[];
+  config: {
+    max_steps: number;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAgentInput {
+  name: string;
+  description?: string;
+  system_prompt: string;
+  tools?: AgentToolConfig[];
+  config?: {
+    max_steps: number;
+  };
+}
+
+export type AgentRunStatus =
+  | "created"
+  | "planning"
+  | "executing"
+  | "waiting_tool"
+  | "success"
+  | "failed"
+  | "cancelled";
+
+export interface AgentRun {
+  id: string;
+  agent_id: string;
+  task: string;
+  status: AgentRunStatus;
+  result?: string;
+  error?: string;
+  total_steps: number;
+  completed_steps: number;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface AgentStep {
+  id: string;
+  step_number: number;
+  type: "think" | "tool_call" | "code_exec" | "response" | "plan";
+  content?: string;
+  tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  tool_output?: Record<string, unknown>;
+  status: string;
+  error?: string;
+  latency_ms?: number;
+}
+
+export interface AgentRunDetail {
+  run: AgentRun;
+  steps: AgentStep[];
+}
+
+export const ACTIVE_RUN_STATUSES: AgentRunStatus[] = [
+  "created",
+  "planning",
+  "executing",
+  "waiting_tool",
+];
 
 export const api = new ApiClient();

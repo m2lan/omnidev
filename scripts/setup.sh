@@ -29,6 +29,10 @@ check_command pnpm
 check_command docker
 check_command make
 
+if [ ! -d ../knowledge-engine ]; then
+    error "Clone knowledge-engine next to omnidev/ (the gateway imports it as a local module)"
+fi
+
 # Check Go version
 GO_VERSION=$(go version | grep -oP 'go\K[0-9]+\.[0-9]+')
 if [[ $(echo "$GO_VERSION < 1.22" | bc) -eq 1 ]]; then
@@ -72,9 +76,9 @@ sleep 10
 info "Checking service health..."
 docker compose -f deploy/docker/docker-compose.infra.yml ps
 
-# Run migrations
-info "Running database migrations..."
-# TODO: implement migrate command
+# Migrations run automatically through the one-shot "migrate" compose service
+info "Applying database migrations..."
+docker compose -f deploy/docker/docker-compose.infra.yml run --rm migrate
 
 info ""
 info "=========================================="
@@ -90,5 +94,5 @@ info " Services:"
 info "   Gateway:    http://localhost:9090"
 info "   Web:        http://localhost:3000"
 info "   MinIO:      http://localhost:9001"
-info "   Temporal:   http://localhost:8088"
+info "   Tika:       http://localhost:9998"
 info ""

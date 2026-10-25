@@ -39,22 +39,11 @@ func Load() (*Config, error) {
 	v.SetDefault("redis.max_retries", 3)
 	v.SetDefault("redis.pool_size", 10)
 
-	v.SetDefault("kafka.brokers", []string{"localhost:9092"})
-	v.SetDefault("kafka.group_id", "omnidev")
-	v.SetDefault("kafka.auto_offset_reset", "earliest")
-
 	v.SetDefault("minio.endpoint", "localhost:9000")
 	v.SetDefault("minio.access_key", "minioadmin")
 	v.SetDefault("minio.secret_key", "minioadmin")
 	v.SetDefault("minio.use_ssl", false)
 	v.SetDefault("minio.bucket_prefix", "omnidev")
-
-	v.SetDefault("es.url", "http://localhost:9200")
-	v.SetDefault("es.index_prefix", "omnidev")
-
-	v.SetDefault("temporal.host", "localhost:7233")
-	v.SetDefault("temporal.namespace", "default")
-	v.SetDefault("temporal.task_queue", "omnidev")
 
 	v.SetDefault("jwt.secret", "change-me-in-production")
 	v.SetDefault("jwt.access_expiry", "15m")
@@ -65,10 +54,16 @@ func Load() (*Config, error) {
 	v.SetDefault("ai.embedding_provider", "openai")
 	v.SetDefault("ai.embedding_model", "text-embedding-3-small")
 
-	v.SetDefault("sandbox.runtime_image", "omnidev/sandbox:latest")
-	v.SetDefault("sandbox.cpu_limit", "2")
-	v.SetDefault("sandbox.memory_limit", "2Gi")
-	v.SetDefault("sandbox.timeout", "300s")
+	v.SetDefault("sandbox.enabled", true)
+	v.SetDefault("sandbox.workspace_root", "./data/agent-workspaces")
+	v.SetDefault("sandbox.network", "none")
+	v.SetDefault("sandbox.python_image", "python:3.12-alpine")
+	v.SetDefault("sandbox.node_image", "node:22-alpine")
+	v.SetDefault("sandbox.go_image", "golang:1.22-alpine")
+	v.SetDefault("sandbox.shell_image", "alpine:3.19")
+	v.SetDefault("sandbox.cpu_limit", "1")
+	v.SetDefault("sandbox.memory_limit", "512m")
+	v.SetDefault("sandbox.timeout", "120s")
 
 	v.SetDefault("telemetry.otlp_endpoint", "http://localhost:4317")
 
@@ -162,14 +157,10 @@ func bindEnvVars(v *viper.Viper) {
 		"REDIS_PORT":                     "redis.port",
 		"REDIS_PASSWORD":                 "redis.password",
 		"REDIS_DB":                       "redis.db",
-		"KAFKA_BROKERS":                  "kafka.brokers",
-		"KAFKA_GROUP_ID":                 "kafka.group_id",
 		"MINIO_ENDPOINT":                 "minio.endpoint",
 		"MINIO_ACCESS_KEY":               "minio.access_key",
 		"MINIO_SECRET_KEY":               "minio.secret_key",
 		"MINIO_USE_SSL":                  "minio.use_ssl",
-		"ES_URL":                         "es.url",
-		"TEMPORAL_HOST":                  "temporal.host",
 		"JWT_SECRET":                     "jwt.secret",
 		"JWT_ACCESS_EXPIRY":              "jwt.access_expiry",
 		"JWT_REFRESH_EXPIRY":             "jwt.refresh_expiry",
@@ -196,6 +187,20 @@ func bindEnvVars(v *viper.Viper) {
 		"GOOGLE_CLIENT_ID":               "oauth.google.client_id",
 		"GOOGLE_CLIENT_SECRET":           "oauth.google.client_secret",
 		"GOOGLE_REDIRECT_URL":            "oauth.google.redirect_url",
+		"AGENT_MODEL":                    "agent.model",
+		"AGENT_BASE_URL":                 "agent.base_url",
+		"AGENT_API_KEY":                  "agent.api_key",
+		"SANDBOX_ENABLED":                "sandbox.enabled",
+		"SANDBOX_WORKSPACE_ROOT":         "sandbox.workspace_root",
+		"SANDBOX_HOST_WORKSPACE_ROOT":    "sandbox.host_workspace_root",
+		"SANDBOX_NETWORK":                "sandbox.network",
+		"SANDBOX_PYTHON_IMAGE":           "sandbox.python_image",
+		"SANDBOX_NODE_IMAGE":             "sandbox.node_image",
+		"SANDBOX_GO_IMAGE":               "sandbox.go_image",
+		"SANDBOX_SHELL_IMAGE":            "sandbox.shell_image",
+		"SANDBOX_CPU_LIMIT":              "sandbox.cpu_limit",
+		"SANDBOX_MEMORY_LIMIT":           "sandbox.memory_limit",
+		"SANDBOX_TIMEOUT":                "sandbox.timeout",
 		"TIKA_ENDPOINT":                  "tika.endpoint",
 		"TIKA_TIMEOUT":                   "tika.timeout",
 		"KNOWLEDGE_STORAGE_TYPE":         "knowledge.storage_type",
@@ -233,14 +238,10 @@ func applyEnvFileOverrides(v *viper.Viper) {
 		"REDIS_PORT":                     "redis.port",
 		"REDIS_PASSWORD":                 "redis.password",
 		"REDIS_DB":                       "redis.db",
-		"KAFKA_BROKERS":                  "kafka.brokers",
-		"KAFKA_GROUP_ID":                 "kafka.group_id",
 		"MINIO_ENDPOINT":                 "minio.endpoint",
 		"MINIO_ACCESS_KEY":               "minio.access_key",
 		"MINIO_SECRET_KEY":               "minio.secret_key",
 		"MINIO_USE_SSL":                  "minio.use_ssl",
-		"ES_URL":                         "es.url",
-		"TEMPORAL_HOST":                  "temporal.host",
 		"JWT_SECRET":                     "jwt.secret",
 		"JWT_ACCESS_EXPIRY":              "jwt.access_expiry",
 		"JWT_REFRESH_EXPIRY":             "jwt.refresh_expiry",
@@ -267,6 +268,20 @@ func applyEnvFileOverrides(v *viper.Viper) {
 		"GOOGLE_CLIENT_ID":               "oauth.google.client_id",
 		"GOOGLE_CLIENT_SECRET":           "oauth.google.client_secret",
 		"GOOGLE_REDIRECT_URL":            "oauth.google.redirect_url",
+		"AGENT_MODEL":                    "agent.model",
+		"AGENT_BASE_URL":                 "agent.base_url",
+		"AGENT_API_KEY":                  "agent.api_key",
+		"SANDBOX_ENABLED":                "sandbox.enabled",
+		"SANDBOX_WORKSPACE_ROOT":         "sandbox.workspace_root",
+		"SANDBOX_HOST_WORKSPACE_ROOT":    "sandbox.host_workspace_root",
+		"SANDBOX_NETWORK":                "sandbox.network",
+		"SANDBOX_PYTHON_IMAGE":           "sandbox.python_image",
+		"SANDBOX_NODE_IMAGE":             "sandbox.node_image",
+		"SANDBOX_GO_IMAGE":               "sandbox.go_image",
+		"SANDBOX_SHELL_IMAGE":            "sandbox.shell_image",
+		"SANDBOX_CPU_LIMIT":              "sandbox.cpu_limit",
+		"SANDBOX_MEMORY_LIMIT":           "sandbox.memory_limit",
+		"SANDBOX_TIMEOUT":                "sandbox.timeout",
 		"TIKA_ENDPOINT":                  "tika.endpoint",
 		"TIKA_TIMEOUT":                   "tika.timeout",
 		"KNOWLEDGE_STORAGE_TYPE":         "knowledge.storage_type",

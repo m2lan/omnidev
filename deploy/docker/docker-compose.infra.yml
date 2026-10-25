@@ -1,10 +1,10 @@
 # ==============================================================================
-# OmniDev AI Platform — Infrastructure Services
+# OmniDev — Infrastructure for the modular monolith
+# PostgreSQL + pgvector, Redis, MinIO, Tika and one-shot database migrations.
 # Usage: docker compose -f deploy/docker/docker-compose.infra.yml up -d
 # ==============================================================================
 
 services:
-  # --- PostgreSQL 16 ---
   postgres:
     image: pgvector/pgvector:pg16
     container_name: omnidev-postgres
@@ -23,8 +23,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - omnidev
 
-  # --- Redis 7 ---
+  migrate:
+    image: migrate/migrate:v4.17.1
+    container_name: omnidev-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../apps/gateway/migrations:/migrations:ro
+    command:
+      - -path
+      - /migrations
+      - -database
+      - postgres://omnidev:omnidev@postgres:5432/omnidev?sslmode=disable
+      - up
+    networks:
+      - omnidev
+
   redis:
     image: redis:7-alpine
     container_name: omnidev-redis
@@ -39,39 +57,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - omnidev
 
-  # --- Kafka (KRaft mode, no ZooKeeper) ---
-  kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    container_name: omnidev-kafka
-    restart: unless-stopped
-    ports:
-      - "9092:9092"
-      - "9093:9093"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_LOG_RETENTION_BYTES: 1073741824
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # --- MinIO (S3-compatible object storage) ---
   minio:
     image: minio/minio:latest
     container_name: omnidev-minio
@@ -90,62 +78,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - omnidev
 
-  # --- Elasticsearch 8 ---
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    container_name: omnidev-elasticsearch
-    restart: unless-stopped
-    ports:
-      - "9200:9200"
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - xpack.security.http.ssl.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - cluster.name=omnidev
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-
-  # --- Temporal (workflow engine) ---
-  temporal:
-    image: temporalio/auto-setup:1.24.2
-    container_name: omnidev-temporal
-    restart: unless-stopped
-    ports:
-      - "7233:7233"
-      - "8088:8088"
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CLI_ADDRESS: temporal:7233
-      DB: postgresql
-      DB_PORT: 5432
-      POSTGRES_USER: omnidev
-      POSTGRES_PWD: omnidev
-      POSTGRES_SEEDS: postgres
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  temporal-ui:
-    image: temporalio/ui:2.27.2
-    container_name: omnidev-temporal-ui
-    restart: unless-stopped
-    ports:
-      - "8088:8080"
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:3000
-    depends_on:
-      - temporal
-
-  # --- Apache Tika (document parser) ---
   tika:
     image: apache/tika:latest
     container_name: omnidev-tika
@@ -157,10 +92,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - omnidev
+
+networks:
+  omnidev:
+    driver: bridge
 
 volumes:
   postgres_data:
   redis_data:
-  kafka_data:
   minio_data:
-  es_data:
